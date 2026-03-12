@@ -27,9 +27,9 @@ class SessionBridge(QObject):
     def __init__(self, session: EditorSession, parent: QObject | None = None):
         super().__init__(parent)
         self._session = session
-        self._thumbnail_extractor = ThumbnailExtractor(
-            cache_dir=Path(tempfile.gettempdir()) / "video_scissors_thumbnails"
-        )
+        # Use session-specific temp dir (cleaned up by OS)
+        self._thumbnail_dir = Path(tempfile.mkdtemp(prefix="video_scissors_"))
+        self._thumbnail_extractor = ThumbnailExtractor(cache_dir=self._thumbnail_dir)
 
     @Property(bool, notify=videoChanged)
     def hasVideo(self) -> bool:
