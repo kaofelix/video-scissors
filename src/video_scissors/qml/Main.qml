@@ -40,6 +40,9 @@ ApplicationWindow {
                 Connections {
                     target: session
                     function onVideoChanged() {
+                        // Clear old thumbnails
+                        timeline.thumbnailUrls = []
+
                         if (session.hasVideo) {
                             videoPlayer.source = session.workingVideoUrl
                             // Play-pause trick to render first frame immediately
@@ -68,12 +71,26 @@ ApplicationWindow {
         Timeline {
             id: timeline
             Layout.fillWidth: true
+            Layout.preferredHeight: 60
             position: videoPlayer.position
             duration: videoPlayer.duration
+            videoWidth: session.videoWidth
+            videoHeight: session.videoHeight
             enabled: session.hasVideo
 
             onSeekRequested: function(positionMs) {
                 videoPlayer.position = positionMs
+            }
+
+            onThumbnailsRequested: function(count, height) {
+                session.requestThumbnails(count, height)
+            }
+
+            Connections {
+                target: session
+                function onThumbnailsReady(urls) {
+                    timeline.thumbnailUrls = urls
+                }
             }
         }
 
