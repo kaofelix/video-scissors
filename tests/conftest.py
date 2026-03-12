@@ -7,6 +7,93 @@ from pathlib import Path
 import pytest
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+SCREENSHOTS_DIR = Path(__file__).parent / "screenshots"
+
+
+# --- pytest-qt configuration ---
+
+
+@pytest.fixture(scope="session")
+def qapp_cls():
+    """Use QGuiApplication for QML tests."""
+    from PySide6.QtGui import QGuiApplication
+
+    return QGuiApplication
+
+
+# --- GUI test fixtures ---
+
+
+@pytest.fixture
+def app_window(qtbot):
+    """Create and show the main application window.
+
+    Returns the ApplicationWindow with Main.qml loaded and session bridge configured.
+    """
+    from PySide6.QtCore import QUrl
+    from PySide6.QtQml import QQmlApplicationEngine
+
+    from video_scissors.bridge import SessionBridge
+    from video_scissors.session import EditorSession
+
+    # Create session and bridge
+    session = EditorSession()
+    bridge = SessionBridge(session)
+
+    # Create engine and load QML
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("session", bridge)
+
+    qml_file = Path(__file__).parent.parent / "src" / "video_scissors" / "qml" / "Main.qml"
+    engine.load(QUrl.fromLocalFile(str(qml_file)))
+
+    if not engine.rootObjects():
+        pytest.fail("Failed to load QML: no root objects created")
+
+    window = engine.rootObjects()[0]
+    qtbot.waitExposed(window)
+
+    # Keep references alive
+    window._engine = engine
+    window._session = session
+    window._bridge = bridge
+
+    yield window
+
+    window.close()
+
+
+@pytest.fixture
+def capture_screenshot(qapp):
+    """Fixture providing screenshot capture function.
+
+    Usage:
+        def test_something(app_window, capture_screenshot):
+            capture_screenshot(app_window, "my_test_name")
+    """
+    SCREENSHOTS_DIR.mkdir(exist_ok=True)
+
+    def _capture(window, name: str) -> Path:
+        """Capture a screenshot of the window.
+
+        Args:
+            window: QWindow or similar window
+            name: Name for the screenshot file (without extension)
+
+        Returns:
+            Path to the saved screenshot
+        """
+        from PySide6.QtGui import QGuiApplication
+
+        # Get the screen and grab the window
+        screen = QGuiApplication.primaryScreen()
+        pixmap = screen.grabWindow(window.winId())
+
+        path = SCREENSHOTS_DIR / f"{name}.png"
+        pixmap.save(str(path))
+        return path
+
+    return _capture
 
 
 def generate_test_video(
