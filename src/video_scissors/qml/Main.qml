@@ -11,8 +11,6 @@ ApplicationWindow {
     height: 600
     title: "Video Scissors"
 
-    property bool cropMode: false
-
     menuBar: MenuBar {
         Menu {
             title: qsTr("&File")
@@ -27,24 +25,14 @@ ApplicationWindow {
             Action {
                 text: qsTr("&Undo")
                 shortcut: StandardKey.Undo
-                enabled: session.canUndo && !cropMode
+                enabled: session.canUndo && !cropOverlay.hasCrop
                 onTriggered: session.undo()
             }
             Action {
                 text: qsTr("&Redo")
                 shortcut: StandardKey.Redo
-                enabled: session.canRedo && !cropMode
+                enabled: session.canRedo && !cropOverlay.hasCrop
                 onTriggered: session.redo()
-            }
-            MenuSeparator {}
-            Action {
-                text: qsTr("&Crop")
-                shortcut: "C"
-                enabled: session.hasVideo && !cropMode
-                onTriggered: {
-                    cropOverlay.reset()
-                    cropMode = true
-                }
             }
         }
     }
@@ -96,21 +84,29 @@ ApplicationWindow {
                 }
             }
 
-            // Crop overlay
+            // Crop overlay - always active when video loaded
             CropOverlay {
                 id: cropOverlay
                 anchors.fill: parent
-                visible: cropMode
+                visible: session.hasVideo
                 videoWidth: session.videoWidth
                 videoHeight: session.videoHeight
 
                 onCropApplied: function(x, y, width, height) {
                     session.applyCrop(x, y, width, height)
-                    cropMode = false
+                    clear()
                 }
 
                 onCropCancelled: {
-                    cropMode = false
+                    // Already cleared by cancel()
+                }
+            }
+
+            // Clear crop selection when video changes
+            Connections {
+                target: session
+                function onVideoChanged() {
+                    cropOverlay.clear()
                 }
             }
 
@@ -123,13 +119,13 @@ ApplicationWindow {
                 visible: !session.hasVideo
             }
 
-            // Crop controls overlay
+            // Crop controls - appear when crop selection exists
             Row {
                 anchors.bottom: parent.bottom
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottomMargin: 16
                 spacing: 16
-                visible: cropMode
+                visible: cropOverlay.hasCrop
 
                 Button {
                     text: "Cancel"

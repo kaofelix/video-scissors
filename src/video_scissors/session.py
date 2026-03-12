@@ -82,6 +82,7 @@ class EditorSession:
             self._undo_stack.append(self._working_video)
         self._redo_stack.clear()
         self._working_video = path
+        self._probe_dimensions(path)
 
     def undo(self) -> None:
         """Undo the last edit, restoring the previous working video."""
@@ -90,6 +91,7 @@ class EditorSession:
         if self._working_video is not None:
             self._redo_stack.append(self._working_video)
         self._working_video = self._undo_stack.pop()
+        self._probe_dimensions(self._working_video)
 
     def redo(self) -> None:
         """Redo the last undone edit."""
@@ -98,6 +100,7 @@ class EditorSession:
         if self._working_video is not None:
             self._undo_stack.append(self._working_video)
         self._working_video = self._redo_stack.pop()
+        self._probe_dimensions(self._working_video)
 
     def close(self) -> None:
         """Close the session, clearing all state."""

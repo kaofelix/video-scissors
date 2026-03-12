@@ -3,8 +3,9 @@ import QtQuick
 /**
  * CropOverlay - Direct manipulation crop selection over video.
  *
- * Displays a draggable crop rectangle with dimmed regions outside.
- * Emits cropApplied when user confirms selection.
+ * Click and drag anywhere to create a crop rectangle.
+ * Drag corners to resize, drag inside to move.
+ * Shows apply/cancel when a crop selection exists.
  */
 Item {
     id: root
@@ -13,8 +14,13 @@ Item {
     property int videoWidth: 0
     property int videoHeight: 0
 
-    // The crop rectangle in video coordinates
-    property rect cropRect: Qt.rect(0, 0, videoWidth, videoHeight)
+    // Whether a crop selection exists
+    readonly property bool hasCrop: cropRect.width > 0 && cropRect.height > 0
+        && (cropRect.x > 0 || cropRect.y > 0
+            || cropRect.width < videoWidth || cropRect.height < videoHeight)
+
+    // The crop rectangle in video coordinates (empty = no selection)
+    property rect cropRect: Qt.rect(0, 0, 0, 0)
 
     // Minimum crop size in video pixels
     readonly property int minCropSize: 32
@@ -22,48 +28,87 @@ Item {
     signal cropApplied(int x, int y, int width, int height)
     signal cropCancelled()
 
-    visible: false
+    // Click anywhere to start drawing a crop rectangle
+    MouseArea {
+        id: drawArea
+        anchors.fill: parent
+        enabled: !root.hasCrop  // Only when no crop exists
+        cursorShape: Qt.CrossCursor
 
-    // Dimmed regions outside crop area
+        property point dragStart
+
+        onPressed: function(mouse) {
+            dragStart = Qt.point(mouse.x, mouse.y)
+            root.cropRect = Qt.rect(
+                mapToVideoX(mouse.x),
+                mapToVideoY(mouse.y),
+                0, 0
+            )
+        }
+
+        onPositionChanged: function(mouse) {
+            var startX = mapToVideoX(dragStart.x)
+            var startY = mapToVideoY(dragStart.y)
+            var endX = mapToVideoX(mouse.x)
+            var endY = mapToVideoY(mouse.y)
+
+            // Handle dragging in any direction
+            var x = Math.min(startX, endX)
+            var y = Math.min(startY, endY)
+            var w = Math.abs(endX - startX)
+            var h = Math.abs(endY - startY)
+
+            // Clamp to video bounds
+            x = Math.max(0, x)
+            y = Math.max(0, y)
+            w = Math.min(w, root.videoWidth - x)
+            h = Math.min(h, root.videoHeight - y)
+
+            root.cropRect = Qt.rect(x, y, w, h)
+        }
+    }
+
+    // Dimmed regions outside crop area (only visible when crop exists)
     Rectangle {
-        id: topDim
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
         height: cropArea.y
         color: "#80000000"
+        visible: root.hasCrop
     }
 
     Rectangle {
-        id: bottomDim
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         height: parent.height - cropArea.y - cropArea.height
         color: "#80000000"
+        visible: root.hasCrop
     }
 
     Rectangle {
-        id: leftDim
         anchors.left: parent.left
         y: cropArea.y
         width: cropArea.x
         height: cropArea.height
         color: "#80000000"
+        visible: root.hasCrop
     }
 
     Rectangle {
-        id: rightDim
         anchors.right: parent.right
         y: cropArea.y
         width: parent.width - cropArea.x - cropArea.width
         height: cropArea.height
         color: "#80000000"
+        visible: root.hasCrop
     }
 
     // The crop rectangle
     Rectangle {
         id: cropArea
+        visible: root.hasCrop
         x: mapFromVideoX(root.cropRect.x)
         y: mapFromVideoY(root.cropRect.y)
         width: mapFromVideoX(root.cropRect.width)
@@ -203,23 +248,26 @@ Item {
         return screenY * root.videoHeight / root.height
     }
 
-    // Reset crop to full video
-    function reset() {
-        cropRect = Qt.rect(0, 0, videoWidth, videoHeight)
+    // Clear the crop selection
+    function clear() {
+        cropRect = Qt.rect(0, 0, 0, 0)
     }
 
     // Apply the current crop
     function apply() {
-        cropApplied(
-            Math.round(cropRect.x),
-            Math.round(cropRect.y),
-            Math.round(cropRect.width),
-            Math.round(cropRect.height)
-        )
+        if (hasCrop) {
+            cropApplied(
+                Math.round(cropRect.x),
+                Math.round(cropRect.y),
+                Math.round(cropRect.width),
+                Math.round(cropRect.height)
+            )
+        }
     }
 
     // Cancel cropping
     function cancel() {
+        clear()
         cropCancelled()
     }
 }

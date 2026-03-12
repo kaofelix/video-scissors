@@ -16,6 +16,8 @@ This directory is gitignored.
 
 from pathlib import Path
 
+from PySide6.QtCore import QPoint, Qt
+
 SCREENSHOTS_DIR = Path(__file__).parent / "screenshots"
 
 
@@ -40,6 +42,43 @@ class TestAppShell:
         """Window has reasonable default size."""
         assert app_window.width() >= 640
         assert app_window.height() >= 480
+
+
+class TestCropOverlay:
+    """GUI tests for the crop overlay."""
+
+    def test_video_ready_for_crop(self, app_window, qtbot, test_video):
+        """Video loads and is ready for crop interaction."""
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(100)
+
+        # Video should be loaded
+        assert app_window._bridge.hasVideo
+        # Video dimensions should be available (needed for crop coordinate mapping)
+        assert app_window._bridge.videoWidth == 320
+        assert app_window._bridge.videoHeight == 240
+
+    def test_drag_creates_crop_selection(self, app_window, qtbot, test_video, capture_screenshot):
+        """Clicking and dragging on video creates a crop selection."""
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(200)
+
+        # Get the video container area (approximate - it's the main content area)
+        window_center = QPoint(app_window.width() // 2, app_window.height() // 3)
+
+        # Simulate drag from top-left to bottom-right of a region
+        start = QPoint(window_center.x() - 50, window_center.y() - 50)
+        end = QPoint(window_center.x() + 50, window_center.y() + 50)
+
+        # Use qtbot mouse operations
+        qtbot.mousePress(app_window, Qt.LeftButton, pos=start)
+        qtbot.mouseMove(app_window, pos=end)
+        qtbot.mouseRelease(app_window, Qt.LeftButton, pos=end)
+
+        qtbot.wait(100)
+        capture_screenshot(app_window, "crop_selection")
+
+        # The crop should be captured in the screenshot for visual verification
 
 
 class TestTimeline:
