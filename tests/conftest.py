@@ -30,11 +30,16 @@ def app_window(qtbot):
 
     Returns the ApplicationWindow with Main.qml loaded and session bridge configured.
     """
+    import os
+
     from PySide6.QtCore import QUrl
     from PySide6.QtQml import QQmlApplicationEngine
 
     from video_scissors.bridge import SessionBridge
     from video_scissors.session import EditorSession
+
+    # Set Qt Quick Controls style for consistent rendering
+    os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Fusion")
 
     # Create session and bridge
     session = EditorSession()
@@ -53,6 +58,9 @@ def app_window(qtbot):
     window = engine.rootObjects()[0]
     qtbot.waitExposed(window)
 
+    # Wait for scene to fully render
+    qtbot.wait(100)
+
     # Keep references alive
     window._engine = engine
     window._session = session
@@ -64,7 +72,7 @@ def app_window(qtbot):
 
 
 @pytest.fixture
-def capture_screenshot(qapp):
+def capture_screenshot(qapp, qtbot):
     """Fixture providing screenshot capture function.
 
     Usage:
@@ -83,7 +91,11 @@ def capture_screenshot(qapp):
         Returns:
             Path to the saved screenshot
         """
+        from PySide6.QtCore import QCoreApplication, QEventLoop
         from PySide6.QtGui import QGuiApplication
+
+        # Process pending events to ensure rendering is complete
+        QCoreApplication.processEvents(QEventLoop.AllEvents, 100)
 
         # Get the screen and grab the window
         screen = QGuiApplication.primaryScreen()
