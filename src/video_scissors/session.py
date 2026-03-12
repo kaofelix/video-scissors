@@ -11,6 +11,8 @@ class EditorSession:
     Tracks the source video (original file) and working video
     (current state after edits). Source remains immutable while
     working video changes as edits are applied.
+
+    Supports undo/redo via history stacks of working video paths.
     """
 
     def __init__(self) -> None:
@@ -18,6 +20,8 @@ class EditorSession:
         self._working_video: Path | None = None
         self._video_width: int = 0
         self._video_height: int = 0
+        self._undo_stack: list[Path] = []
+        self._redo_stack: list[Path] = []
 
     @property
     def source_video(self) -> Path | None:
@@ -44,6 +48,16 @@ class EditorSession:
         """Height of the loaded video in pixels."""
         return self._video_height
 
+    @property
+    def can_undo(self) -> bool:
+        """True if there are edits that can be undone."""
+        return len(self._undo_stack) > 0
+
+    @property
+    def can_redo(self) -> bool:
+        """True if there are undone edits that can be redone."""
+        return len(self._redo_stack) > 0
+
     def load(self, path: Path) -> None:
         """Load a video file, setting it as both source and working."""
         self._source_video = path
@@ -64,7 +78,26 @@ class EditorSession:
 
     def set_working_video(self, path: Path) -> None:
         """Update the working video path after an edit."""
+        if self._working_video is not None:
+            self._undo_stack.append(self._working_video)
+        self._redo_stack.clear()
         self._working_video = path
+
+    def undo(self) -> None:
+        """Undo the last edit, restoring the previous working video."""
+        if not self.can_undo:
+            return
+        if self._working_video is not None:
+            self._redo_stack.append(self._working_video)
+        self._working_video = self._undo_stack.pop()
+
+    def redo(self) -> None:
+        """Redo the last undone edit."""
+        if not self.can_redo:
+            return
+        if self._working_video is not None:
+            self._undo_stack.append(self._working_video)
+        self._working_video = self._redo_stack.pop()
 
     def close(self) -> None:
         """Close the session, clearing all state."""
@@ -72,3 +105,5 @@ class EditorSession:
         self._working_video = None
         self._video_width = 0
         self._video_height = 0
+        self._undo_stack.clear()
+        self._redo_stack.clear()

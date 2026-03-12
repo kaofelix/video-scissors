@@ -56,3 +56,124 @@ class TestEditorSession:
         assert session.source_video is None
         assert session.working_video is None
         assert session.has_video is False
+
+
+class TestUndoRedo:
+    """Tests for undo/redo functionality in EditorSession."""
+
+    def test_can_undo_is_false_initially(self, test_video: Path):
+        """Cannot undo when no edits have been made."""
+        session = EditorSession()
+        session.load(test_video)
+
+        assert session.can_undo is False
+
+    def test_can_redo_is_false_initially(self, test_video: Path):
+        """Cannot redo when nothing has been undone."""
+        session = EditorSession()
+        session.load(test_video)
+
+        assert session.can_redo is False
+
+    def test_can_undo_after_edit(self, test_video: Path):
+        """Can undo after an edit changes the working video."""
+        session = EditorSession()
+        session.load(test_video)
+
+        session.set_working_video(Path("/tmp/edited.mp4"))
+
+        assert session.can_undo is True
+
+    def test_undo_restores_previous_working_video(self, test_video: Path):
+        """Undo restores the previous working video."""
+        session = EditorSession()
+        session.load(test_video)
+        edited = Path("/tmp/edited.mp4")
+        session.set_working_video(edited)
+
+        session.undo()
+
+        assert session.working_video == test_video
+
+    def test_can_redo_after_undo(self, test_video: Path):
+        """Can redo after undoing an edit."""
+        session = EditorSession()
+        session.load(test_video)
+        edited = Path("/tmp/edited.mp4")
+        session.set_working_video(edited)
+        session.undo()
+
+        assert session.can_redo is True
+
+    def test_redo_restores_undone_working_video(self, test_video: Path):
+        """Redo restores the working video that was undone."""
+        session = EditorSession()
+        session.load(test_video)
+        edited = Path("/tmp/edited.mp4")
+        session.set_working_video(edited)
+        session.undo()
+
+        session.redo()
+
+        assert session.working_video == edited
+
+    def test_cannot_undo_after_undo_exhausted(self, test_video: Path):
+        """Cannot undo when history is exhausted."""
+        session = EditorSession()
+        session.load(test_video)
+        session.set_working_video(Path("/tmp/edited.mp4"))
+        session.undo()
+
+        assert session.can_undo is False
+
+    def test_cannot_redo_after_redo_exhausted(self, test_video: Path):
+        """Cannot redo when redo stack is exhausted."""
+        session = EditorSession()
+        session.load(test_video)
+        session.set_working_video(Path("/tmp/edited.mp4"))
+        session.undo()
+        session.redo()
+
+        assert session.can_redo is False
+
+    def test_new_edit_clears_redo_stack(self, test_video: Path):
+        """Making a new edit after undo clears the redo stack."""
+        session = EditorSession()
+        session.load(test_video)
+        session.set_working_video(Path("/tmp/edit1.mp4"))
+        session.undo()
+        session.set_working_video(Path("/tmp/edit2.mp4"))
+
+        assert session.can_redo is False
+
+    def test_multiple_undo_redo(self, test_video: Path):
+        """Multiple edits can be undone and redone in sequence."""
+        session = EditorSession()
+        session.load(test_video)
+        edit1 = Path("/tmp/edit1.mp4")
+        edit2 = Path("/tmp/edit2.mp4")
+        session.set_working_video(edit1)
+        session.set_working_video(edit2)
+
+        session.undo()
+        assert session.working_video == edit1
+
+        session.undo()
+        assert session.working_video == test_video
+
+        session.redo()
+        assert session.working_video == edit1
+
+        session.redo()
+        assert session.working_video == edit2
+
+    def test_close_clears_undo_redo_history(self, test_video: Path):
+        """Closing the session clears undo/redo history."""
+        session = EditorSession()
+        session.load(test_video)
+        session.set_working_video(Path("/tmp/edited.mp4"))
+        session.undo()
+        session.close()
+
+        assert session.can_undo is False
+        assert session.can_redo is False

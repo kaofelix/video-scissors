@@ -10,6 +10,8 @@ from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
+from video_scissors.edit_service import FFmpegEditService
+from video_scissors.services import CropRequest
 from video_scissors.session import EditorSession
 from video_scissors.thumbnails import ThumbnailExtractor
 
@@ -24,12 +26,23 @@ class SessionBridge(QObject):
     videoChanged = Signal()
     thumbnailsReady = Signal(list)  # List of file:// URLs
 
-    def __init__(self, session: EditorSession, parent: QObject | None = None):
+    def __init__(
+        self,
+        session: EditorSession,
+        parent: QObject | None = None,
+        edit_output_dir: Path | None = None,
+    ):
         super().__init__(parent)
         self._session = session
         # Use session-specific temp dir (cleaned up by OS)
-        self._thumbnail_dir = Path(tempfile.mkdtemp(prefix="video_scissors_"))
+        self._temp_dir = Path(tempfile.mkdtemp(prefix="video_scissors_"))
+        self._thumbnail_dir = self._temp_dir / "thumbnails"
+        self._thumbnail_dir.mkdir(exist_ok=True)
         self._thumbnail_extractor = ThumbnailExtractor(cache_dir=self._thumbnail_dir)
+        # Edit output directory (for crop/cut results)
+        self._edit_output_dir = edit_output_dir or (self._temp_dir / "edits")
+        self._edit_output_dir.mkdir(exist_ok=True)
+        self._edit_service = FFmpegEditService(output_dir=self._edit_output_dir)
 
     @Property(bool, notify=videoChanged)
     def hasVideo(self) -> bool:
@@ -53,6 +66,16 @@ class SessionBridge(QObject):
         """Height of the loaded video in pixels."""
         return self._session.video_height
 
+    @Property(bool, notify=videoChanged)
+    def canUndo(self) -> bool:
+        """True if there are edits that can be undone."""
+        return self._session.can_undo
+
+    @Property(bool, notify=videoChanged)
+    def canRedo(self) -> bool:
+        """True if there are undone edits that can be redone."""
+        return self._session.can_redo
+
     @Slot(str)
     def openFile(self, path: str) -> None:
         """Open a video file."""
@@ -69,6 +92,30 @@ class SessionBridge(QObject):
     def setWorkingVideo(self, path: str) -> None:
         """Update the working video path (after an edit)."""
         self._session.set_working_video(Path(path))
+        self.videoChanged.emit()
+
+    @Slot()
+    def undo(self) -> None:
+        """Undo the last edit."""
+        if self._session.can_undo:
+            self._session.undo()
+            self.videoChanged.emit()
+
+    @Slot()
+    def redo(self) -> None:
+        """Redo the last undone edit."""
+        if self._session.can_redo:
+            self._session.redo()
+            self.videoChanged.emit()
+
+    @Slot(int, int, int, int)
+    def applyCrop(self, x: int, y: int, width: int, height: int) -> None:
+        """Apply a crop operation to the working video."""
+        if self._session.working_video is None:
+            return
+        request = CropRequest(x=x, y=y, width=width, height=height)
+        result = self._edit_service.apply_crop(self._session.working_video, request)
+        self._session.set_working_video(result.output_path)
         self.videoChanged.emit()
 
     @Slot(int, int)

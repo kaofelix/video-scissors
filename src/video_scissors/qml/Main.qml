@@ -11,6 +11,8 @@ ApplicationWindow {
     height: 600
     title: "Video Scissors"
 
+    property bool cropMode: false
+
     menuBar: MenuBar {
         Menu {
             title: qsTr("&File")
@@ -18,6 +20,31 @@ ApplicationWindow {
                 text: qsTr("&Open…")
                 shortcut: StandardKey.Open
                 onTriggered: fileDialog.open()
+            }
+        }
+        Menu {
+            title: qsTr("&Edit")
+            Action {
+                text: qsTr("&Undo")
+                shortcut: StandardKey.Undo
+                enabled: session.canUndo && !cropMode
+                onTriggered: session.undo()
+            }
+            Action {
+                text: qsTr("&Redo")
+                shortcut: StandardKey.Redo
+                enabled: session.canRedo && !cropMode
+                onTriggered: session.redo()
+            }
+            MenuSeparator {}
+            Action {
+                text: qsTr("&Crop")
+                shortcut: "C"
+                enabled: session.hasVideo && !cropMode
+                onTriggered: {
+                    cropOverlay.reset()
+                    cropMode = true
+                }
             }
         }
     }
@@ -38,6 +65,7 @@ ApplicationWindow {
 
         // Video display area
         Rectangle {
+            id: videoContainer
             Layout.fillWidth: true
             Layout.fillHeight: true
             color: "#000000"
@@ -68,6 +96,24 @@ ApplicationWindow {
                 }
             }
 
+            // Crop overlay
+            CropOverlay {
+                id: cropOverlay
+                anchors.fill: parent
+                visible: cropMode
+                videoWidth: session.videoWidth
+                videoHeight: session.videoHeight
+
+                onCropApplied: function(x, y, width, height) {
+                    session.applyCrop(x, y, width, height)
+                    cropMode = false
+                }
+
+                onCropCancelled: {
+                    cropMode = false
+                }
+            }
+
             // Placeholder when no video
             Text {
                 anchors.centerIn: parent
@@ -75,6 +121,26 @@ ApplicationWindow {
                 color: "#888888"
                 font.pixelSize: 18
                 visible: !session.hasVideo
+            }
+
+            // Crop controls overlay
+            Row {
+                anchors.bottom: parent.bottom
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottomMargin: 16
+                spacing: 16
+                visible: cropMode
+
+                Button {
+                    text: "Cancel"
+                    onClicked: cropOverlay.cancel()
+                }
+
+                Button {
+                    text: "Apply Crop"
+                    highlighted: true
+                    onClicked: cropOverlay.apply()
+                }
             }
         }
 
