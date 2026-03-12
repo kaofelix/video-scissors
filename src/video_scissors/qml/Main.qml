@@ -38,11 +38,6 @@ ApplicationWindow {
                 anchors.fill: parent
                 source: session.workingVideoUrl
 
-                // Update slider position (imperatively to avoid binding loop)
-                onPositionChanged: {
-                    seekSlider.value = position
-                }
-
                 // Reload when working video changes
                 Connections {
                     target: session
@@ -71,12 +66,13 @@ ApplicationWindow {
             }
         }
 
-        // Seek slider (value updated imperatively via onPositionChanged to avoid binding loop)
+        // Seek slider
         Slider {
             id: seekSlider
             Layout.fillWidth: true
             from: 0
             to: videoPlayer.duration
+            value: videoPlayer.position
             enabled: session.hasVideo
 
             onMoved: {
