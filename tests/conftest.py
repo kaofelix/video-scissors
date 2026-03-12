@@ -1,10 +1,17 @@
 """Test configuration and fixtures for video-scissors."""
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import QCoreApplication, QEventLoop, QUrl
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlApplicationEngine
+
+from video_scissors.bridge import SessionBridge
+from video_scissors.session import EditorSession
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SCREENSHOTS_DIR = Path(__file__).parent / "screenshots"
@@ -16,8 +23,6 @@ SCREENSHOTS_DIR = Path(__file__).parent / "screenshots"
 @pytest.fixture(scope="session")
 def qapp_cls():
     """Use QGuiApplication for QML tests."""
-    from PySide6.QtGui import QGuiApplication
-
     return QGuiApplication
 
 
@@ -30,14 +35,6 @@ def app_window(qtbot):
 
     Returns the ApplicationWindow with Main.qml loaded and session bridge configured.
     """
-    import os
-
-    from PySide6.QtCore import QUrl
-    from PySide6.QtQml import QQmlApplicationEngine
-
-    from video_scissors.bridge import SessionBridge
-    from video_scissors.session import EditorSession
-
     # Set Qt Quick Controls style for consistent rendering
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Fusion")
 
@@ -91,9 +88,6 @@ def capture_screenshot(qapp, qtbot):
         Returns:
             Path to the saved screenshot
         """
-        from PySide6.QtCore import QCoreApplication, QEventLoop
-        from PySide6.QtGui import QGuiApplication
-
         # Process pending events to ensure rendering is complete
         QCoreApplication.processEvents(QEventLoop.AllEvents, 100)
 

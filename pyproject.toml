@@ -35,7 +35,7 @@ line-length = 100
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+select = ["E", "F", "I", "UP", "B", "SIM", "PLC0415"]
 
 [tool.ty.environment]
 root = ["src", "tests"]

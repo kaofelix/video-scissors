@@ -2,15 +2,16 @@
 
 from pathlib import Path
 
+from conftest import generate_test_video
+from video_scissors.bridge import SessionBridge
+from video_scissors.session import EditorSession
+
 
 class TestSessionBridge:
     """Tests for SessionBridge - the QML-facing API."""
 
     def test_bridge_exposes_has_video(self):
         """Bridge exposes hasVideo property."""
-        from video_scissors.bridge import SessionBridge
-        from video_scissors.session import EditorSession
-
         session = EditorSession()
         bridge = SessionBridge(session)
 
@@ -18,9 +19,6 @@ class TestSessionBridge:
 
     def test_bridge_exposes_working_video_path(self, test_video: Path):
         """Bridge exposes workingVideoUrl for QML."""
-        from video_scissors.bridge import SessionBridge
-        from video_scissors.session import EditorSession
-
         session = EditorSession()
         session.load(test_video)
         bridge = SessionBridge(session)
@@ -31,9 +29,6 @@ class TestSessionBridge:
 
     def test_bridge_returns_empty_url_when_no_video(self):
         """Bridge returns empty string when no video loaded."""
-        from video_scissors.bridge import SessionBridge
-        from video_scissors.session import EditorSession
-
         session = EditorSession()
         bridge = SessionBridge(session)
 
@@ -41,9 +36,6 @@ class TestSessionBridge:
 
     def test_open_file_loads_into_session(self, test_video: Path):
         """openFile loads the video into the session."""
-        from video_scissors.bridge import SessionBridge
-        from video_scissors.session import EditorSession
-
         session = EditorSession()
         bridge = SessionBridge(session)
 
@@ -54,9 +46,6 @@ class TestSessionBridge:
 
     def test_open_file_emits_video_changed_signal(self, test_video: Path):
         """openFile emits videoChanged signal."""
-        from video_scissors.bridge import SessionBridge
-        from video_scissors.session import EditorSession
-
         session = EditorSession()
         bridge = SessionBridge(session)
 
@@ -69,9 +58,6 @@ class TestSessionBridge:
 
     def test_close_clears_session(self, test_video: Path):
         """close clears the session."""
-        from video_scissors.bridge import SessionBridge
-        from video_scissors.session import EditorSession
-
         session = EditorSession()
         session.load(test_video)
         bridge = SessionBridge(session)
@@ -82,10 +68,6 @@ class TestSessionBridge:
 
     def test_reload_updates_working_video(self, test_video: Path, tmp_path: Path):
         """Reloading with new path updates workingVideoUrl."""
-        from conftest import generate_test_video
-        from video_scissors.bridge import SessionBridge
-        from video_scissors.session import EditorSession
-
         session = EditorSession()
         session.load(test_video)
         bridge = SessionBridge(session)
