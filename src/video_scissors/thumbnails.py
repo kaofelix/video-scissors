@@ -81,42 +81,53 @@ class ThumbnailExtractor:
         thumb_height: int,
         cache_key: str,
     ) -> list[Path]:
-        """Extract frames using PyAV."""
+        """Extract frames using PyAV.
+
+        Decodes video sequentially and picks frames at even intervals.
+        This is more reliable than seeking, which only works with keyframes.
+        """
         cache_subdir = self.cache_dir / cache_key
         cache_subdir.mkdir(parents=True, exist_ok=True)
 
         container = av.open(str(video_path))
         stream = container.streams.video[0]
 
-        # Calculate duration and timestamps (in seconds)
-        duration = float(stream.duration * stream.time_base)
-        timestamps = [i * duration / frame_count for i in range(frame_count)]
-
         # Calculate thumbnail dimensions
         aspect_ratio = stream.width / stream.height
         thumb_width = int(thumb_height * aspect_ratio)
 
-        frame_paths = []
-        for i, timestamp in enumerate(timestamps):
-            frame_path = cache_subdir / f"frame_{i:04d}.jpg"
+        # Calculate which frame indices to extract
+        total_frames = stream.frames
+        if total_frames == 0 and stream.duration and stream.time_base and stream.average_rate:
+            # Estimate from duration if frame count not available
+            duration = float(stream.duration * stream.time_base)
+            fps = float(stream.average_rate)
+            total_frames = int(duration * fps)
 
-            # Seek to timestamp (convert seconds to microseconds for av.time_base)
-            # Use backward seek to find nearest keyframe, then decode forward
-            seek_ts = int(timestamp * av.time_base.denominator)
-            container.seek(seek_ts, backward=True, any_frame=False)
+        if total_frames == 0:
+            total_frames = frame_count  # Fallback: assume we'll get at least frame_count frames
 
-            # Decode frames until we reach or pass our target timestamp
-            target_pts = int(timestamp / stream.time_base)
-            for frame in container.decode(stream):
-                if frame.pts >= target_pts or frame.pts == 0:
-                    # Convert to PIL and resize
-                    img = frame.to_image()
-                    img = img.resize((thumb_width, thumb_height))
+        # Calculate target frame indices (evenly distributed)
+        target_indices = [int(i * total_frames / frame_count) for i in range(frame_count)]
 
-                    # Save as JPEG
-                    img.save(frame_path, "JPEG", quality=85)
-                    frame_paths.append(frame_path)
-                    break
+        frame_paths: list[Path] = []
+        next_target_idx = 0
+
+        for frame_idx, frame in enumerate(container.decode(stream)):
+            if next_target_idx >= len(target_indices):
+                break
+
+            if frame_idx >= target_indices[next_target_idx]:
+                frame_path = cache_subdir / f"frame_{next_target_idx:04d}.jpg"
+
+                # Convert to PIL and resize
+                img = frame.to_image()
+                img = img.resize((thumb_width, thumb_height))
+
+                # Save as JPEG
+                img.save(frame_path, "JPEG", quality=85)
+                frame_paths.append(frame_path)
+                next_target_idx += 1
 
         container.close()
         return frame_paths
