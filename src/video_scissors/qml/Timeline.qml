@@ -74,6 +74,7 @@ Item {
                         ? (root.thumbnailUrls[index] || "")
                         : ""
                     asynchronous: true
+                    cache: false  // Disable caching to ensure fresh loads
 
                     // Placeholder while loading
                     Rectangle {
