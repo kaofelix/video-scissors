@@ -1,0 +1,14 @@
+[project]
+name = "video-scissors"
+version = "0.1.0"
+description = "Fast, focused video editor for quick edits"
+readme = "README.md"
+requires-python = ">=3.12.1"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[dependency-groups]
+dev = ["pytest>=9.0"]
