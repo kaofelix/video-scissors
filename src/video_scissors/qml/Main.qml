@@ -76,6 +76,8 @@ ApplicationWindow {
                             videoPlayer.play()
                             videoPlayer.pause()
                             videoPlayer.position = 0
+                            // Force thumbnail re-request (frameCount may not change if aspect ratio similar)
+                            timeline.requestThumbnails()
                         } else {
                             videoPlayer.stop()
                             videoPlayer.source = ""

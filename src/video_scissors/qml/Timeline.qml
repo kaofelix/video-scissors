@@ -44,6 +44,11 @@ Item {
 
     // Request thumbnails when layout parameters change
     onFrameCountChanged: {
+        requestThumbnails()
+    }
+
+    // Request thumbnail extraction
+    function requestThumbnails() {
         if (frameCount > 0 && thumbHeight > 0) {
             thumbnailsRequested(frameCount, thumbHeight)
         }
