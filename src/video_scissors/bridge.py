@@ -6,7 +6,7 @@ QML interacts with the session through this bridge only.
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Property, Signal, Slot
+from PySide6.QtCore import Property, QObject, Signal, Slot
 
 from video_scissors.session import EditorSession
 

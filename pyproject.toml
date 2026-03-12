@@ -26,4 +26,22 @@ video-scissors = "video_scissors.app:main"
 dev = [
     "pytest>=9.0",
     "pytest-qt>=4.5.0",
+    "ruff>=0.15.5",
+    "ty>=0.0.21",
 ]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ty.environment]
+root = ["src", "tests"]
+
+[tool.ty.rules]
+# PySide6 stubs are incomplete, downgrade some errors
+unresolved-attribute = "warn"
+# PySide6 Property returns str at runtime but typed as Property
+unsupported-operator = "warn"

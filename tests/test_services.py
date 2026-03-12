@@ -6,9 +6,6 @@ between high-level application logic and FFmpeg implementation details.
 """
 
 from pathlib import Path
-from typing import Protocol, runtime_checkable
-
-import pytest
 
 
 class TestMediaProbeService:
@@ -16,7 +13,7 @@ class TestMediaProbeService:
 
     def test_protocol_defines_probe_method(self):
         """MediaProbeService requires a probe method returning VideoInfo."""
-        from video_scissors.services import MediaProbeService, VideoInfo
+        from video_scissors.services import MediaProbeService
 
         # Verify it's a protocol with the expected method
         assert hasattr(MediaProbeService, "probe")

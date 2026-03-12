@@ -2,8 +2,6 @@
 
 from pathlib import Path
 
-import pytest
-
 
 class TestEditorSession:
     """Tests for EditorSession - the core editing state container."""

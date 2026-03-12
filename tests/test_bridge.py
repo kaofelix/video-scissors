@@ -1,9 +1,6 @@
 """Tests for the QML/Python bridge."""
 
 from pathlib import Path
-from unittest.mock import Mock
-
-import pytest
 
 
 class TestSessionBridge:
@@ -85,9 +82,9 @@ class TestSessionBridge:
 
     def test_reload_updates_working_video(self, test_video: Path, tmp_path: Path):
         """Reloading with new path updates workingVideoUrl."""
+        from conftest import generate_test_video
         from video_scissors.bridge import SessionBridge
         from video_scissors.session import EditorSession
-        from conftest import generate_test_video
 
         session = EditorSession()
         session.load(test_video)

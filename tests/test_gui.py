@@ -16,9 +16,6 @@ This directory is gitignored.
 
 from pathlib import Path
 
-import pytest
-
-
 SCREENSHOTS_DIR = Path(__file__).parent / "screenshots"
 
 
