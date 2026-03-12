@@ -38,12 +38,21 @@ ApplicationWindow {
                 anchors.fill: parent
                 source: session.workingVideoUrl
 
+                // Update slider position (imperatively to avoid binding loop)
+                onPositionChanged: {
+                    seekSlider.value = position
+                }
+
                 // Reload when working video changes
                 Connections {
                     target: session
                     function onVideoChanged() {
                         if (session.hasVideo) {
                             videoPlayer.source = session.workingVideoUrl
+                            // Play-pause trick to render first frame immediately
+                            videoPlayer.play()
+                            videoPlayer.pause()
+                            videoPlayer.position = 0
                         } else {
                             videoPlayer.stop()
                             videoPlayer.source = ""
@@ -62,13 +71,12 @@ ApplicationWindow {
             }
         }
 
-        // Seek slider
+        // Seek slider (value updated imperatively via onPositionChanged to avoid binding loop)
         Slider {
             id: seekSlider
             Layout.fillWidth: true
             from: 0
             to: videoPlayer.duration
-            value: videoPlayer.position
             enabled: session.hasVideo
 
             onMoved: {
