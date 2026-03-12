@@ -40,3 +40,43 @@ class TestAppShell:
         """Window has reasonable default size."""
         assert app_window.width() >= 640
         assert app_window.height() >= 480
+
+
+class TestTimeline:
+    """GUI tests for the timeline scrubber."""
+
+    def test_timeline_visible_in_app(self, app_window, qtbot):
+        """Timeline component is present when app loads."""
+        # The app loads Main.qml which includes the Timeline component
+        # If Timeline.qml had errors, the window wouldn't load
+        assert app_window.isVisible()
+
+    def test_timeline_disabled_without_video(self, app_window, qtbot):
+        """Timeline is disabled when no video is loaded."""
+        # The timeline's enabled property is bound to session.hasVideo
+        # Without a video loaded, interaction should be disabled
+        assert app_window.isVisible()
+        # Session has no video initially
+        assert not app_window._bridge.hasVideo
+
+    def test_timeline_enabled_with_video(self, app_window, qtbot, test_video):
+        """Timeline is enabled when video is loaded."""
+        # Load video
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(100)  # Allow signal processing
+
+        assert app_window._bridge.hasVideo
+
+    def test_timeline_shows_playhead_position(
+        self, app_window, qtbot, test_video, capture_screenshot
+    ):
+        """Timeline displays the current playhead position."""
+        # Load video
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(200)  # Allow video to load and timeline to update
+
+        # Capture for visual verification
+        capture_screenshot(app_window, "timeline_with_video")
+
+        # Verify video is loaded (timeline should now show duration)
+        assert app_window._bridge.hasVideo

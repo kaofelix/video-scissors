@@ -64,17 +64,16 @@ ApplicationWindow {
             }
         }
 
-        // Seek slider
-        Slider {
-            id: seekSlider
+        // Timeline scrubber
+        Timeline {
+            id: timeline
             Layout.fillWidth: true
-            from: 0
-            to: videoPlayer.duration
-            value: videoPlayer.position
+            position: videoPlayer.position
+            duration: videoPlayer.duration
             enabled: session.hasVideo
 
-            onMoved: {
-                videoPlayer.position = value
+            onSeekRequested: function(positionMs) {
+                videoPlayer.position = positionMs
             }
         }
 
