@@ -8,7 +8,7 @@ from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
-from video_scissors.bridge import SessionBridge
+from video_scissors.bootstrap import create_session_bridge
 from video_scissors.session import EditorSession
 
 
@@ -24,7 +24,7 @@ def main() -> int:
 
     # Create session and bridge
     session = EditorSession()
-    bridge = SessionBridge(session)
+    bridge = create_session_bridge(session)
 
     # Load QML
     engine = QQmlApplicationEngine()

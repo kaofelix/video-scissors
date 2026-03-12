@@ -60,24 +60,21 @@ ApplicationWindow {
 
             Video {
                 id: videoPlayer
+                objectName: "videoPlayer"
                 anchors.fill: parent
+                fillMode: VideoOutput.PreserveAspectFit
                 source: session.workingVideoUrl
 
                 // Reload when working video changes
                 Connections {
                     target: session
                     function onVideoChanged() {
-                        // Clear old thumbnails
-                        timeline.thumbnailUrls = []
-
                         if (session.hasVideo) {
                             videoPlayer.source = session.workingVideoUrl
                             // Play-pause trick to render first frame immediately
                             videoPlayer.play()
                             videoPlayer.pause()
                             videoPlayer.position = 0
-                            // Force thumbnail re-request (frameCount may not change if aspect ratio similar)
-                            timeline.requestThumbnails()
                         } else {
                             videoPlayer.stop()
                             videoPlayer.source = ""
@@ -89,10 +86,12 @@ ApplicationWindow {
             // Crop overlay - always active when video loaded
             CropOverlay {
                 id: cropOverlay
+                objectName: "cropOverlay"
                 anchors.fill: parent
                 visible: session.hasVideo
                 videoWidth: session.videoWidth
                 videoHeight: session.videoHeight
+                videoRevision: session.workingVideoRevision
 
                 onCropApplied: function(x, y, width, height) {
                     session.applyCrop(x, y, width, height)
@@ -101,14 +100,6 @@ ApplicationWindow {
 
                 onCropCancelled: {
                     // Already cleared by cancel()
-                }
-            }
-
-            // Clear crop selection when video changes
-            Connections {
-                target: session
-                function onVideoChanged() {
-                    cropOverlay.clear()
                 }
             }
 
@@ -145,20 +136,28 @@ ApplicationWindow {
         // Timeline scrubber
         Timeline {
             id: timeline
+            objectName: "timeline"
             Layout.fillWidth: true
             Layout.preferredHeight: 60
             position: videoPlayer.position
             duration: videoPlayer.duration
             videoWidth: session.videoWidth
             videoHeight: session.videoHeight
+            videoRevision: session.workingVideoRevision
             enabled: session.hasVideo
+            focus: session.hasVideo && !cropOverlay.hasCrop
 
             onSeekRequested: function(positionMs) {
                 videoPlayer.position = positionMs
             }
 
-            onThumbnailsRequested: function(count, height) {
-                session.requestThumbnails(count, height)
+            onThumbnailsRequested: function(count, height, revision) {
+                session.requestThumbnails(count, height, revision)
+            }
+
+            onCutRequested: function(startMs, endMs) {
+                // Convert to seconds for the backend
+                session.applyCut(startMs / 1000.0, endMs / 1000.0)
             }
 
             Connections {

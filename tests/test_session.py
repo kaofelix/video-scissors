@@ -177,3 +177,46 @@ class TestUndoRedo:
 
         assert session.can_undo is False
         assert session.can_redo is False
+
+    def test_loading_new_video_clears_previous_history(self, test_video: Path, tmp_path: Path):
+        """Opening a new video starts a fresh history for the session."""
+        session = EditorSession()
+        session.load(test_video)
+        session.set_working_video(tmp_path / "edit1.mp4")
+
+        new_video = tmp_path / "new_source.mp4"
+        session.load(new_video)
+
+        assert session.source_video == new_video
+        assert session.working_video == new_video
+        assert session.can_undo is False
+        assert session.can_redo is False
+
+    def test_working_video_revision_changes_on_working_video_transitions(
+        self, test_video: Path, tmp_path: Path
+    ):
+        """Working video revision changes whenever the current working video changes."""
+        session = EditorSession()
+
+        assert session.working_video_revision == 0
+
+        session.load(test_video)
+        after_load = session.working_video_revision
+
+        session.set_working_video(tmp_path / "edit1.mp4")
+        after_edit = session.working_video_revision
+
+        session.undo()
+        after_undo = session.working_video_revision
+
+        session.redo()
+        after_redo = session.working_video_revision
+
+        session.close()
+        after_close = session.working_video_revision
+
+        assert after_load > 0
+        assert after_edit > after_load
+        assert after_undo > after_edit
+        assert after_redo > after_undo
+        assert after_close > after_redo

@@ -68,6 +68,9 @@ Undo and redo are core editing capabilities, not polish.
 
 Every editing feature should be designed with reversible actions in mind. The app should adopt a consistent command/history model early so later features do not require architectural rewrites.
 
+In this project, undo/redo history is backend-owned.
+Qt may provide shortcuts and actions, but the authoritative history model should stay in Python so it remains aligned with media operations and working-video state.
+
 ## 8. Prefer thin vertical slices
 Development should proceed in small, usable increments.
 
@@ -124,6 +127,7 @@ Examples:
 - remove a segment directly from the timeline affordance
 
 Whenever possible, the user should act on the content itself rather than switch into a separate mode.
+When an interaction acts on video pixels, prefer to model the interaction in video-space coordinates and render it through an explicit transform into the displayed video rect.
 
 ## 13. Build for polish in the timeline experience
 The scrubber/timeline is a signature feature.
@@ -147,6 +151,8 @@ The project should regularly prefer:
 - fewer layers
 - simpler naming
 - clearer data flow
+- composition at the application edge instead of construction inside adapter objects
+- strategic state-change signals instead of scattered imperative cleanup
 
 ## 15. Treat the old project as reference material only
 `~/Code/videoeditor` can be consulted for implementation ideas, experiments, and solved problems.

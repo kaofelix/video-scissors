@@ -4,16 +4,13 @@ This module provides the narrow interface between QML and Python.
 QML interacts with the session through this bridge only.
 """
 
-import tempfile
 import threading
 from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
-from video_scissors.edit_service import FFmpegEditService
-from video_scissors.services import CropRequest
+from video_scissors.services import CropRequest, CutRequest, EditService, ThumbnailExtractorProtocol
 from video_scissors.session import EditorSession
-from video_scissors.thumbnails import ThumbnailExtractor
 
 
 class SessionBridge(QObject):
@@ -29,20 +26,14 @@ class SessionBridge(QObject):
     def __init__(
         self,
         session: EditorSession,
+        thumbnail_extractor: ThumbnailExtractorProtocol,
+        edit_service: EditService,
         parent: QObject | None = None,
-        edit_output_dir: Path | None = None,
     ):
         super().__init__(parent)
         self._session = session
-        # Use session-specific temp dir (cleaned up by OS)
-        self._temp_dir = Path(tempfile.mkdtemp(prefix="video_scissors_"))
-        self._thumbnail_dir = self._temp_dir / "thumbnails"
-        self._thumbnail_dir.mkdir(exist_ok=True)
-        self._thumbnail_extractor = ThumbnailExtractor(cache_dir=self._thumbnail_dir)
-        # Edit output directory (for crop/cut results)
-        self._edit_output_dir = edit_output_dir or (self._temp_dir / "edits")
-        self._edit_output_dir.mkdir(exist_ok=True)
-        self._edit_service = FFmpegEditService(output_dir=self._edit_output_dir)
+        self._thumbnail_extractor = thumbnail_extractor
+        self._edit_service = edit_service
 
     @Property(bool, notify=videoChanged)
     def hasVideo(self) -> bool:
@@ -55,6 +46,11 @@ class SessionBridge(QObject):
         if self._session.working_video is None:
             return ""
         return self._session.working_video.as_uri()
+
+    @Property(int, notify=videoChanged)
+    def workingVideoRevision(self) -> int:
+        """Monotonic revision for current working-video changes."""
+        return self._session.working_video_revision
 
     @Property(int, notify=videoChanged)
     def videoWidth(self) -> int:
@@ -118,22 +114,35 @@ class SessionBridge(QObject):
         self._session.set_working_video(result.output_path)
         self.videoChanged.emit()
 
-    @Slot(int, int)
-    def requestThumbnails(self, frame_count: int, thumb_height: int) -> None:
-        """Request thumbnail extraction in background thread.
+    @Slot(float, float)
+    def applyCut(self, start: float, end: float) -> None:
+        """Apply a cut (segment removal) to the working video."""
+        if self._session.working_video is None:
+            return
+        request = CutRequest(start=start, end=end)
+        result = self._edit_service.apply_cut(self._session.working_video, request)
+        self._session.set_working_video(result.output_path)
+        self.videoChanged.emit()
+
+    @Slot(int, int, int)
+    def requestThumbnails(self, frame_count: int, thumb_height: int, revision: int) -> None:
+        """Request thumbnail extraction in a background thread.
 
         Args:
             frame_count: Number of frames to extract
             thumb_height: Height of each thumbnail in pixels
+            revision: Working-video revision the request applies to
         """
         video_path = self._session.working_video
-        if video_path is None or frame_count <= 0:
-            self.thumbnailsReady.emit([])
+        current_revision = self._session.working_video_revision
+        if video_path is None or frame_count <= 0 or revision != current_revision:
             return
 
-        def extract_and_emit():
+        def extract_and_emit() -> None:
             frames = self._thumbnail_extractor.extract(video_path, frame_count, thumb_height)
-            urls = [f"file://{path}" for path in frames]
+            if revision != self._session.working_video_revision:
+                return
+            urls = [path.as_uri() for path in frames]
             # Emit signal (safe from thread via Qt's queued connections)
             self.thumbnailsReady.emit(urls)
 

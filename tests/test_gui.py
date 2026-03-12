@@ -16,7 +16,9 @@ This directory is gitignored.
 
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QObject, QPoint, QRectF, Qt
+
+from conftest import generate_test_video
 
 SCREENSHOTS_DIR = Path(__file__).parent / "screenshots"
 
@@ -80,6 +82,77 @@ class TestCropOverlay:
 
         # The crop should be captured in the screenshot for visual verification
 
+    def test_crop_overlay_maps_against_displayed_video_rect(self, app_window, qtbot, tmp_path):
+        """Crop mapping uses the displayed video rect, not the whole container."""
+        portrait_video = tmp_path / "portrait.mp4"
+        generate_test_video(portrait_video, duration=1.0, width=240, height=320)
+
+        app_window._bridge.openFile(str(portrait_video))
+        qtbot.wait(300)
+
+        video_player = app_window.findChild(QObject, "videoPlayer")
+        crop_overlay = app_window.findChild(QObject, "cropOverlay")
+
+        assert video_player is not None
+        assert crop_overlay is not None
+
+        content_rect = crop_overlay.property("videoContentRect")
+
+        assert content_rect is not None
+        assert round(crop_overlay.mapToVideoX(content_rect.x())) == 0
+        assert round(crop_overlay.mapToVideoY(content_rect.y())) == 0
+        assert round(crop_overlay.mapToVideoX(content_rect.x() + content_rect.width())) == 240
+        assert round(crop_overlay.mapToVideoY(content_rect.y() + content_rect.height())) == 320
+
+    def test_crop_overlay_uses_video_space_layer_with_single_scale_transform(
+        self, app_window, qtbot, tmp_path
+    ):
+        """Crop overlay renders a video-space layer transformed into the content rect."""
+        portrait_video = tmp_path / "portrait.mp4"
+        generate_test_video(portrait_video, duration=1.0, width=240, height=320)
+
+        app_window._bridge.openFile(str(portrait_video))
+        qtbot.wait(300)
+
+        crop_overlay = app_window.findChild(QObject, "cropOverlay")
+        video_layer = app_window.findChild(QObject, "cropVideoLayer")
+
+        assert crop_overlay is not None
+        assert video_layer is not None
+
+        content_rect = crop_overlay.property("videoContentRect")
+        video_scale = crop_overlay.property("videoScale")
+
+        assert video_layer.property("width") == 240
+        assert video_layer.property("height") == 320
+        assert round(video_layer.property("x"), 3) == round(content_rect.x(), 3)
+        assert round(video_layer.property("y"), 3) == round(content_rect.y(), 3)
+        assert round(video_layer.property("scale"), 6) == round(video_scale, 6)
+
+    def test_crop_overlay_converts_moving_item_points_back_to_video_space(
+        self, app_window, qtbot, tmp_path
+    ):
+        """Points from moved crop items resolve back to stable video-space coordinates."""
+        large_video = tmp_path / "large.mp4"
+        generate_test_video(large_video, duration=1.0, width=1280, height=720)
+
+        app_window._bridge.openFile(str(large_video))
+        qtbot.wait(300)
+
+        crop_overlay = app_window.findChild(QObject, "cropOverlay")
+        crop_area = app_window.findChild(QObject, "cropArea")
+
+        assert crop_overlay is not None
+        assert crop_area is not None
+
+        crop_overlay.setProperty("cropRect", QRectF(200, 100, 300, 180))
+        qtbot.wait(50)
+
+        point = crop_overlay.videoPointFromItemPoint(crop_area, 30, 20)
+
+        assert round(point.x(), 3) == 230
+        assert round(point.y(), 3) == 120
+
 
 class TestTimeline:
     """GUI tests for the timeline scrubber."""
@@ -119,3 +192,67 @@ class TestTimeline:
 
         # Verify video is loaded (timeline should now show duration)
         assert app_window._bridge.hasVideo
+
+
+class TestCutSelection:
+    """GUI tests for cut selection on timeline."""
+
+    def test_timeline_has_no_selection_initially(self, app_window, qtbot, test_video):
+        """Timeline starts with no cut selection."""
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(100)
+
+        timeline = app_window.findChild(QObject, "timeline")
+        assert timeline is not None
+        assert timeline.property("hasSelection") is False
+
+    def test_shift_drag_creates_selection(self, app_window, qtbot, test_video, capture_screenshot):
+        """Shift+drag on timeline creates a cut selection."""
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(200)
+
+        timeline = app_window.findChild(QObject, "timeline")
+        assert timeline is not None
+
+        # Get timeline position - it's near the bottom of the window
+        # Timeline is 60px high, positioned above the controls row
+        timeline_center_y = app_window.height() - 80  # Approximate
+        start_x = app_window.width() // 4
+        end_x = (app_window.width() * 3) // 4
+
+        # Shift+drag
+        start = QPoint(start_x, timeline_center_y)
+        end = QPoint(end_x, timeline_center_y)
+
+        qtbot.mousePress(app_window, Qt.LeftButton, Qt.ShiftModifier, pos=start)
+        qtbot.mouseMove(app_window, pos=end)
+        qtbot.mouseRelease(app_window, Qt.LeftButton, Qt.ShiftModifier, pos=end)
+
+        qtbot.wait(100)
+        capture_screenshot(app_window, "cut_selection")
+
+        # Selection should be created
+        assert timeline.property("hasSelection") is True
+        assert timeline.property("selectionStart") >= 0
+        assert timeline.property("selectionEnd") >= 0
+
+    def test_cut_selection_can_be_cleared_with_escape(self, app_window, qtbot, test_video):
+        """Escape key clears the cut selection."""
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(200)
+
+        timeline = app_window.findChild(QObject, "timeline")
+
+        # Create a selection by setting properties directly
+        timeline.setProperty("selectionStart", 500)
+        timeline.setProperty("selectionEnd", 1500)
+        qtbot.wait(50)
+
+        assert timeline.property("hasSelection") is True
+
+        # Give timeline focus and press Escape
+        timeline.setProperty("focus", True)
+        qtbot.keyClick(app_window, Qt.Key_Escape)
+        qtbot.wait(50)
+
+        assert timeline.property("hasSelection") is False

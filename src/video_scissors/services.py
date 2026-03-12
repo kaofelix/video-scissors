@@ -100,3 +100,16 @@ class ExportService(Protocol):
     def export(self, source: Path, request: ExportRequest) -> Path:
         """Export the video to the destination."""
         ...
+
+
+class ThumbnailExtractorProtocol(Protocol):
+    """Protocol for thumbnail extraction services."""
+
+    def extract(
+        self,
+        video_path: Path,
+        frame_count: int,
+        thumb_height: int,
+    ) -> list[Path]:
+        """Extract frames from video, evenly distributed across duration."""
+        ...

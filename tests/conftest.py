@@ -6,12 +6,17 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEventLoop, QUrl
-from PySide6.QtGui import QGuiApplication
-from PySide6.QtQml import QQmlApplicationEngine
 
-from video_scissors.bridge import SessionBridge
-from video_scissors.session import EditorSession
+from video_scissors.testing_qt import configure_qt_test_environment
+
+configure_qt_test_environment(os.environ)
+
+from PySide6.QtCore import QCoreApplication, QEventLoop, QUrl  # noqa: E402
+from PySide6.QtGui import QGuiApplication  # noqa: E402
+from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
+
+from video_scissors.bootstrap import create_session_bridge  # noqa: E402
+from video_scissors.session import EditorSession  # noqa: E402
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SCREENSHOTS_DIR = Path(__file__).parent / "screenshots"
@@ -40,7 +45,7 @@ def app_window(qtbot):
 
     # Create session and bridge
     session = EditorSession()
-    bridge = SessionBridge(session)
+    bridge = create_session_bridge(session)
 
     # Create engine and load QML
     engine = QQmlApplicationEngine()
