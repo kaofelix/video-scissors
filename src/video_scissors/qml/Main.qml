@@ -11,8 +11,6 @@ ApplicationWindow {
     height: 600
     title: "Video Scissors"
 
-    color: "#1e1e1e"
-
     FileDialog {
         id: fileDialog
         title: "Open Video"
@@ -56,11 +54,11 @@ ApplicationWindow {
                 }
             }
 
-            // Placeholder when no video
+            // Placeholder when no video (light color for black background)
             Text {
                 anchors.centerIn: parent
                 text: "Drop a video or use File → Open"
-                color: "#666666"
+                color: "#888888"
                 font.pixelSize: 18
                 visible: !session.hasVideo
             }
@@ -104,7 +102,7 @@ ApplicationWindow {
 
             // Time display
             Text {
-                color: "#ffffff"
+                color: palette.text
                 text: formatTime(videoPlayer.position) + " / " + formatTime(videoPlayer.duration)
 
                 function formatTime(ms) {
