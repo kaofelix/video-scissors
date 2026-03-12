@@ -104,6 +104,7 @@ Item {
             width: root.duration > 0 ? parent.width - (root.position / root.duration) * parent.width : parent.width
             color: palette.base
             opacity: 0.4
+            radius: track.radius
 
             Behavior on width {
                 enabled: !root.dragging
