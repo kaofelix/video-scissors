@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import Qt5Compat.GraphicalEffects
 
 /**
  * Timeline scrubber component for video playback.
@@ -55,8 +56,17 @@ Item {
         anchors.topMargin: 8
         anchors.bottomMargin: 8
         color: palette.mid
-        radius: 3
-        clip: true
+        radius: 6
+
+        // Use layer for rounded corner clipping
+        layer.enabled: true
+        layer.effect: OpacityMask {
+            maskSource: Rectangle {
+                width: track.width
+                height: track.height
+                radius: track.radius
+            }
+        }
 
         // Thumbnail row
         Row {
@@ -94,7 +104,6 @@ Item {
             width: root.duration > 0 ? parent.width - (root.position / root.duration) * parent.width : parent.width
             color: palette.base
             opacity: 0.4
-            radius: 3
 
             Behavior on width {
                 enabled: !root.dragging
