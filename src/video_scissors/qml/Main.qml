@@ -11,6 +11,17 @@ ApplicationWindow {
     height: 600
     title: "Video Scissors"
 
+    menuBar: MenuBar {
+        Menu {
+            title: qsTr("&File")
+            Action {
+                text: qsTr("&Open…")
+                shortcut: StandardKey.Open
+                onTriggered: fileDialog.open()
+            }
+        }
+    }
+
     FileDialog {
         id: fileDialog
         title: "Open Video"
@@ -57,10 +68,10 @@ ApplicationWindow {
                 }
             }
 
-            // Placeholder when no video (light color for black background)
+            // Placeholder when no video
             Text {
                 anchors.centerIn: parent
-                text: "Drop a video or use File → Open"
+                text: "File → Open or ⌘O"
                 color: "#888888"
                 font.pixelSize: 18
                 visible: !session.hasVideo
@@ -99,14 +110,20 @@ ApplicationWindow {
             Layout.fillWidth: true
             spacing: 8
 
-            Button {
-                text: "Open"
-                onClicked: fileDialog.open()
+            // Spacer matching time display width for centering
+            Item {
+                Layout.preferredWidth: timeDisplay.width
             }
 
-            Button {
-                text: videoPlayer.playbackState === MediaPlayer.PlayingState ? "Pause" : "Play"
+            Item { Layout.fillWidth: true }
+
+            RoundButton {
+                id: playButton
+                implicitWidth: 48
+                implicitHeight: 48
                 enabled: session.hasVideo
+                text: videoPlayer.playbackState === MediaPlayer.PlayingState ? "⏸" : "▶"
+                font.pixelSize: 18
                 onClicked: {
                     if (videoPlayer.playbackState === MediaPlayer.PlayingState) {
                         videoPlayer.pause()
@@ -114,10 +131,18 @@ ApplicationWindow {
                         videoPlayer.play()
                     }
                 }
+
+                background: Rectangle {
+                    radius: playButton.radius
+                    color: playButton.hovered ? palette.mid : "transparent"
+                }
             }
+
+            Item { Layout.fillWidth: true }
 
             // Time display
             Text {
+                id: timeDisplay
                 color: palette.text
                 text: formatTime(videoPlayer.position) + " / " + formatTime(videoPlayer.duration)
 
@@ -127,14 +152,6 @@ ApplicationWindow {
                     seconds = seconds % 60
                     return minutes + ":" + (seconds < 10 ? "0" : "") + seconds
                 }
-            }
-
-            Item { Layout.fillWidth: true }
-
-            Button {
-                text: "Close"
-                enabled: session.hasVideo
-                onClicked: session.close()
             }
         }
     }
