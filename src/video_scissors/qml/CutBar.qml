@@ -1,14 +1,15 @@
 import QtQuick
 import QtQuick.Controls
+import Qt5Compat.GraphicalEffects
 
 /**
  * CutBar - marker-based cutting interface.
  *
- * A dedicated bar for placing cut markers and removing segments.
- * Same width as timeline scrubber, represents video time.
+ * A track for placing cut markers and removing segments.
+ * Represents video time with marker placement and segment highlighting.
  *
  * Interactions:
- *   - Click to place a cut marker at that frame
+ *   - Click to place a cut marker at that position
  *   - Drag markers to reposition them
  *   - Hover over segment (between markers) → highlights the section
  *   - Hold ⌘/Ctrl + click on segment → removes that segment
@@ -17,7 +18,8 @@ import QtQuick.Controls
  *   - duration: Total video duration in milliseconds
  *   - markers: List of marker times in seconds (from backend)
  *   - enabled: Whether interaction is allowed
- *   - trackLeftOffset: Left offset of the track area (for alignment with Timeline)
+ *   - topRadius: Radius for top corners
+ *   - bottomRadius: Radius for bottom corners (0 when joined with Scrubber)
  *
  * Signals:
  *   - markerAdded(real timeSeconds): User clicked to add a marker
@@ -32,9 +34,8 @@ Item {
     property real duration: 0           // Total duration in ms
     property var markers: []            // Marker times in seconds
     property bool enabled: true
-
-    // Expose track offset for Timeline alignment
-    readonly property real trackLeftOffset: scissorIcon.width + scissorIcon.anchors.leftMargin + track.anchors.leftMargin
+    property int topRadius: 6           // Top corner radius
+    property int bottomRadius: 0        // Bottom corner radius (0 when joined)
 
     // Signals
     signal markerAdded(real timeSeconds)
@@ -53,56 +54,75 @@ Item {
     }
 
     // Internal: hovered segment index (-1 for none)
+    // Only allow segment interaction when there are markers
     property int hoveredSegment: -1
+    property bool hasSegments: markers.length > 0
 
     implicitHeight: 20
 
-    // Scissor icon on the left
-    Text {
-        id: scissorIcon
-        anchors.left: parent.left
-        anchors.verticalCenter: parent.verticalCenter
-        anchors.leftMargin: 4
-        text: "✂"
-        font.pixelSize: 14
-        color: palette.text
-        opacity: 0.5
-    }
-
-    // Track area (to the right of scissor icon)
+    // Track with custom corner radii
     Rectangle {
         id: track
-        anchors.left: scissorIcon.right
-        anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        anchors.leftMargin: 6
-        anchors.topMargin: 2
-        anchors.bottomMargin: 2
+        anchors.fill: parent
         color: palette.mid
-        radius: 3
+        radius: root.topRadius
 
-        // Segment highlight overlays
-        Repeater {
-            model: root.segmentBoundaries.length > 1 ? root.segmentBoundaries.length - 1 : 0
+        // Cover bottom corners to make them square (when joined with Scrubber)
+        Rectangle {
+            visible: root.bottomRadius < root.topRadius
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: parent.radius
+            color: parent.color
+        }
 
-            Rectangle {
-                id: segmentRect
-                property real startTime: root.segmentBoundaries[index]
-                property real endTime: root.segmentBoundaries[index + 1]
-                property real startPos: root.duration > 0 ? (startTime * 1000 / root.duration) * track.width : 0
-                property real endPos: root.duration > 0 ? (endTime * 1000 / root.duration) * track.width : 0
-                property bool isHovered: root.hoveredSegment === index
+        // Segment highlights container - clipped to rounded shape
+        Item {
+            id: highlightContainer
+            anchors.fill: parent
 
-                x: startPos
-                width: Math.max(0, endPos - startPos)
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                color: "white"
-                opacity: isHovered ? 0.25 : 0
+            // Layer mask for rounded clipping
+            layer.enabled: true
+            layer.effect: OpacityMask {
+                maskSource: Rectangle {
+                    width: highlightContainer.width
+                    height: highlightContainer.height
+                    radius: root.topRadius
+                    // Square off bottom corners
+                    Rectangle {
+                        visible: root.bottomRadius < root.topRadius
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: root.topRadius
+                        color: "white"
+                    }
+                }
+            }
 
-                Behavior on opacity {
-                    NumberAnimation { duration: 100 }
+            // Segment highlight overlays (only when there are markers)
+            Repeater {
+                model: root.hasSegments ? root.segmentBoundaries.length - 1 : 0
+
+                Rectangle {
+                    id: segmentRect
+                    property real startTime: root.segmentBoundaries[index]
+                    property real endTime: root.segmentBoundaries[index + 1]
+                    property real startPos: root.duration > 0 ? (startTime * 1000 / root.duration) * track.width : 0
+                    property real endPos: root.duration > 0 ? (endTime * 1000 / root.duration) * track.width : 0
+                    property bool isHovered: root.hoveredSegment === index
+
+                    x: startPos
+                    width: Math.max(0, endPos - startPos)
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    color: "white"
+                    opacity: isHovered ? 0.25 : 0
+
+                    Behavior on opacity {
+                        NumberAnimation { duration: 100 }
+                    }
                 }
             }
         }
@@ -230,10 +250,15 @@ Item {
             anchors.fill: parent
             enabled: root.enabled && root.duration > 0
             hoverEnabled: true
-            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            cursorShape: Qt.ArrowCursor
 
             onPositionChanged: function(mouse) {
-                root.hoveredSegment = findSegmentAt(mouse.x)
+                // Only track segment hover when markers exist
+                if (root.hasSegments) {
+                    root.hoveredSegment = findSegmentAt(mouse.x)
+                } else {
+                    root.hoveredSegment = -1
+                }
             }
 
             onExited: {
@@ -243,8 +268,8 @@ Item {
             onClicked: function(mouse) {
                 var timeSeconds = xToTime(mouse.x)
 
-                if (mouse.modifiers & Qt.ControlModifier || mouse.modifiers & Qt.MetaModifier) {
-                    // ⌘/Ctrl + click: cut the hovered segment
+                if (root.hasSegments && (mouse.modifiers & Qt.ControlModifier || mouse.modifiers & Qt.MetaModifier)) {
+                    // ⌘/Ctrl + click: cut the hovered segment (only when markers exist)
                     var segIndex = findSegmentAt(mouse.x)
                     if (segIndex >= 0 && segIndex < root.segmentBoundaries.length - 1) {
                         var start = root.segmentBoundaries[segIndex]
@@ -280,7 +305,7 @@ Item {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         anchors.rightMargin: 8
-        text: root.hoveredSegment >= 0 ? "Hold ⌘ and click to cut" : ""
+        text: root.hoveredSegment >= 0 ? "⌘+click to cut" : ""
         font.pixelSize: 10
         color: palette.text
         opacity: 0.5

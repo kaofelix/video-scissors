@@ -195,29 +195,29 @@ class TestTimeline:
 
 
 class TestCutBar:
-    """GUI tests for the cut bar marker-based cutting."""
+    """GUI tests for the cut bar marker-based cutting (part of unified Timeline)."""
 
-    def test_cut_bar_visible_in_app(self, app_window, qtbot, test_video):
-        """Cut bar is visible when video is loaded."""
+    def test_timeline_enabled_with_video(self, app_window, qtbot, test_video):
+        """Timeline is enabled when video is loaded."""
         app_window._bridge.openFile(str(test_video))
         qtbot.wait(100)
 
-        cut_bar = app_window.findChild(QObject, "cutBar")
-        assert cut_bar is not None
-        assert cut_bar.property("enabled") is True
+        timeline = app_window.findChild(QObject, "timeline")
+        assert timeline is not None
+        assert timeline.property("enabled") is True
 
-    def test_cut_bar_starts_with_no_markers(self, app_window, qtbot, test_video):
-        """Cut bar starts with empty markers list."""
+    def test_timeline_starts_with_no_markers(self, app_window, qtbot, test_video):
+        """Timeline starts with empty markers list."""
         app_window._bridge.openFile(str(test_video))
         qtbot.wait(100)
 
-        cut_bar = app_window.findChild(QObject, "cutBar")
-        assert cut_bar is not None
-        markers = cut_bar.property("markers")
+        timeline = app_window.findChild(QObject, "timeline")
+        assert timeline is not None
+        markers = timeline.property("markers")
         assert markers == [] or markers is None or len(markers) == 0
 
     def test_markers_sync_with_session(self, app_window, qtbot, test_video):
-        """Markers in cut bar reflect session state."""
+        """Markers in timeline reflect session state."""
         app_window._bridge.openFile(str(test_video))
         qtbot.wait(100)
 
@@ -225,13 +225,13 @@ class TestCutBar:
         app_window._bridge.addMarker(0.5)
         qtbot.wait(50)
 
-        cut_bar = app_window.findChild(QObject, "cutBar")
-        markers = cut_bar.property("markers")
+        timeline = app_window.findChild(QObject, "timeline")
+        markers = timeline.property("markers")
         assert len(markers) == 1
         assert markers[0] == 0.5
 
     def test_multiple_markers_displayed(self, app_window, qtbot, test_video, capture_screenshot):
-        """Multiple markers are displayed on the cut bar."""
+        """Multiple markers are displayed on the timeline."""
         app_window._bridge.openFile(str(test_video))
         qtbot.wait(100)
 
@@ -241,8 +241,8 @@ class TestCutBar:
         app_window._bridge.addMarker(1.2)
         qtbot.wait(50)
 
-        capture_screenshot(app_window, "cut_bar_with_markers")
+        capture_screenshot(app_window, "timeline_with_markers")
 
-        cut_bar = app_window.findChild(QObject, "cutBar")
-        markers = cut_bar.property("markers")
+        timeline = app_window.findChild(QObject, "timeline")
+        markers = timeline.property("markers")
         assert len(markers) == 3

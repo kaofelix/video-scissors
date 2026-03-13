@@ -133,15 +133,29 @@ ApplicationWindow {
             }
         }
 
-        // Cut bar for marker-based cutting
-        CutBar {
-            id: cutBar
-            objectName: "cutBar"
+        // Unified timeline with cut bar and scrubber
+        Timeline {
+            id: timeline
+            objectName: "timeline"
             Layout.fillWidth: true
-            Layout.preferredHeight: 20
+            Layout.preferredHeight: implicitHeight
+
+            position: videoPlayer.position
             duration: videoPlayer.duration
+            videoWidth: session.videoWidth
+            videoHeight: session.videoHeight
+            videoRevision: session.workingVideoRevision
             markers: session.markers
             enabled: session.hasVideo && !cropOverlay.hasCrop
+            focus: session.hasVideo && !cropOverlay.hasCrop
+
+            onSeekRequested: function(positionMs) {
+                videoPlayer.position = positionMs
+            }
+
+            onThumbnailsRequested: function(count, height, revision) {
+                session.requestThumbnails(count, height, revision)
+            }
 
             onMarkerAdded: function(timeSeconds) {
                 session.addMarker(timeSeconds)
@@ -157,31 +171,6 @@ ApplicationWindow {
 
             onSegmentCut: function(startSeconds, endSeconds) {
                 session.applyCut(startSeconds, endSeconds)
-            }
-        }
-
-        // Timeline scrubber
-        Timeline {
-            id: timeline
-            objectName: "timeline"
-            Layout.fillWidth: true
-            Layout.preferredHeight: 60
-            Layout.topMargin: -4  // Bring closer to cut bar
-            leftPadding: cutBar.trackLeftOffset  // Align with cut bar track
-            position: videoPlayer.position
-            duration: videoPlayer.duration
-            videoWidth: session.videoWidth
-            videoHeight: session.videoHeight
-            videoRevision: session.workingVideoRevision
-            enabled: session.hasVideo
-            focus: session.hasVideo && !cropOverlay.hasCrop
-
-            onSeekRequested: function(positionMs) {
-                videoPlayer.position = positionMs
-            }
-
-            onThumbnailsRequested: function(count, height, revision) {
-                session.requestThumbnails(count, height, revision)
             }
 
             Connections {
