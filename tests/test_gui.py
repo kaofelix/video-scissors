@@ -194,65 +194,55 @@ class TestTimeline:
         assert app_window._bridge.hasVideo
 
 
-class TestCutSelection:
-    """GUI tests for cut selection on timeline."""
+class TestCutBar:
+    """GUI tests for the cut bar marker-based cutting."""
 
-    def test_timeline_has_no_selection_initially(self, app_window, qtbot, test_video):
-        """Timeline starts with no cut selection."""
+    def test_cut_bar_visible_in_app(self, app_window, qtbot, test_video):
+        """Cut bar is visible when video is loaded."""
         app_window._bridge.openFile(str(test_video))
         qtbot.wait(100)
 
-        timeline = app_window.findChild(QObject, "timeline")
-        assert timeline is not None
-        assert timeline.property("hasSelection") is False
+        cut_bar = app_window.findChild(QObject, "cutBar")
+        assert cut_bar is not None
+        assert cut_bar.property("enabled") is True
 
-    def test_shift_drag_creates_selection(self, app_window, qtbot, test_video, capture_screenshot):
-        """Shift+drag on timeline creates a cut selection."""
+    def test_cut_bar_starts_with_no_markers(self, app_window, qtbot, test_video):
+        """Cut bar starts with empty markers list."""
         app_window._bridge.openFile(str(test_video))
-        qtbot.wait(200)
-
-        timeline = app_window.findChild(QObject, "timeline")
-        assert timeline is not None
-
-        # Get timeline position - it's near the bottom of the window
-        # Timeline is 60px high, positioned above the controls row
-        timeline_center_y = app_window.height() - 80  # Approximate
-        start_x = app_window.width() // 4
-        end_x = (app_window.width() * 3) // 4
-
-        # Shift+drag
-        start = QPoint(start_x, timeline_center_y)
-        end = QPoint(end_x, timeline_center_y)
-
-        qtbot.mousePress(app_window, Qt.LeftButton, Qt.ShiftModifier, pos=start)
-        qtbot.mouseMove(app_window, pos=end)
-        qtbot.mouseRelease(app_window, Qt.LeftButton, Qt.ShiftModifier, pos=end)
-
         qtbot.wait(100)
-        capture_screenshot(app_window, "cut_selection")
 
-        # Selection should be created
-        assert timeline.property("hasSelection") is True
-        assert timeline.property("selectionStart") >= 0
-        assert timeline.property("selectionEnd") >= 0
+        cut_bar = app_window.findChild(QObject, "cutBar")
+        assert cut_bar is not None
+        markers = cut_bar.property("markers")
+        assert markers == [] or markers is None or len(markers) == 0
 
-    def test_cut_selection_can_be_cleared_with_escape(self, app_window, qtbot, test_video):
-        """Escape key clears the cut selection."""
+    def test_markers_sync_with_session(self, app_window, qtbot, test_video):
+        """Markers in cut bar reflect session state."""
         app_window._bridge.openFile(str(test_video))
-        qtbot.wait(200)
+        qtbot.wait(100)
 
-        timeline = app_window.findChild(QObject, "timeline")
-
-        # Create a selection by setting properties directly
-        timeline.setProperty("selectionStart", 500)
-        timeline.setProperty("selectionEnd", 1500)
+        # Add marker via bridge
+        app_window._bridge.addMarker(0.5)
         qtbot.wait(50)
 
-        assert timeline.property("hasSelection") is True
+        cut_bar = app_window.findChild(QObject, "cutBar")
+        markers = cut_bar.property("markers")
+        assert len(markers) == 1
+        assert markers[0] == 0.5
 
-        # Give timeline focus and press Escape
-        timeline.setProperty("focus", True)
-        qtbot.keyClick(app_window, Qt.Key_Escape)
+    def test_multiple_markers_displayed(self, app_window, qtbot, test_video, capture_screenshot):
+        """Multiple markers are displayed on the cut bar."""
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(100)
+
+        # Add multiple markers
+        app_window._bridge.addMarker(0.3)
+        app_window._bridge.addMarker(0.7)
+        app_window._bridge.addMarker(1.2)
         qtbot.wait(50)
 
-        assert timeline.property("hasSelection") is False
+        capture_screenshot(app_window, "cut_bar_with_markers")
+
+        cut_bar = app_window.findChild(QObject, "cutBar")
+        markers = cut_bar.property("markers")
+        assert len(markers) == 3

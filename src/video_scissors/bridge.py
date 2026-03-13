@@ -21,6 +21,7 @@ class SessionBridge(QObject):
     """
 
     videoChanged = Signal()
+    markersChanged = Signal()
     thumbnailsReady = Signal(list)  # List of file:// URLs
 
     def __init__(
@@ -72,6 +73,11 @@ class SessionBridge(QObject):
         """True if there are undone edits that can be redone."""
         return self._session.can_redo
 
+    @Property(list, notify=markersChanged)
+    def markers(self) -> list[float]:
+        """Cut markers as list of times in seconds."""
+        return list(self._session.markers)
+
     @Slot(str)
     def openFile(self, path: str) -> None:
         """Open a video file."""
@@ -94,15 +100,45 @@ class SessionBridge(QObject):
     def undo(self) -> None:
         """Undo the last edit."""
         if self._session.can_undo:
+            old_markers = self._session.markers
             self._session.undo()
             self.videoChanged.emit()
+            if self._session.markers != old_markers:
+                self.markersChanged.emit()
 
     @Slot()
     def redo(self) -> None:
         """Redo the last undone edit."""
         if self._session.can_redo:
+            old_markers = self._session.markers
             self._session.redo()
             self.videoChanged.emit()
+            if self._session.markers != old_markers:
+                self.markersChanged.emit()
+
+    @Slot(float)
+    def addMarker(self, time: float) -> None:
+        """Add a cut marker at the specified time in seconds."""
+        old_markers = self._session.markers
+        self._session.add_marker(time)
+        if self._session.markers != old_markers:
+            self.markersChanged.emit()
+
+    @Slot(float)
+    def removeMarker(self, time: float) -> None:
+        """Remove the cut marker at the specified time."""
+        old_markers = self._session.markers
+        self._session.remove_marker(time)
+        if self._session.markers != old_markers:
+            self.markersChanged.emit()
+
+    @Slot()
+    def clearMarkers(self) -> None:
+        """Remove all cut markers."""
+        old_markers = self._session.markers
+        self._session.clear_markers()
+        if self._session.markers != old_markers:
+            self.markersChanged.emit()
 
     @Slot(int, int, int, int)
     def applyCrop(self, x: int, y: int, width: int, height: int) -> None:
@@ -121,8 +157,11 @@ class SessionBridge(QObject):
             return
         request = CutRequest(start=start, end=end)
         result = self._edit_service.apply_cut(self._session.working_video, request)
-        self._session.set_working_video(result.output_path)
+        old_markers = self._session.markers
+        self._session.apply_cut(start, end, result.output_path)
         self.videoChanged.emit()
+        if self._session.markers != old_markers:
+            self.markersChanged.emit()
 
     @Slot(int, int, int)
     def requestThumbnails(self, frame_count: int, thumb_height: int, revision: int) -> None:

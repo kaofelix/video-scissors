@@ -328,3 +328,114 @@ class TestBridgeWorkingVideoRevision:
 
         assert signals == [[f"file://{fake_frame}"]]
         assert extractor.calls == [(test_video, 3, 40)]
+
+
+class TestBridgeMarkers:
+    """Tests for cut marker operations via bridge."""
+
+    def test_markers_exposed_as_list(self, test_video: Path):
+        """Bridge exposes markers as a list for QML."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        assert bridge.markers == []
+
+    def test_add_marker_adds_to_list(self, test_video: Path):
+        """addMarker adds a marker at the specified time."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        bridge.addMarker(1.5)
+
+        assert bridge.markers == [1.5]
+
+    def test_remove_marker_removes_from_list(self, test_video: Path):
+        """removeMarker removes the marker at the specified time."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+        bridge.addMarker(1.0)
+        bridge.addMarker(2.0)
+
+        bridge.removeMarker(1.0)
+
+        assert bridge.markers == [2.0]
+
+    def test_clear_markers_removes_all(self, test_video: Path):
+        """clearMarkers removes all markers."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+        bridge.addMarker(1.0)
+        bridge.addMarker(2.0)
+
+        bridge.clearMarkers()
+
+        assert bridge.markers == []
+
+    def test_add_marker_emits_markers_changed(self, test_video: Path):
+        """addMarker emits markersChanged signal."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        signals = []
+        bridge.markersChanged.connect(lambda: signals.append(True))
+
+        bridge.addMarker(1.5)
+
+        assert len(signals) == 1
+
+    def test_marker_undo_emits_markers_changed(self, test_video: Path):
+        """Undoing a marker operation emits markersChanged."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+        bridge.addMarker(1.5)
+
+        signals = []
+        bridge.markersChanged.connect(lambda: signals.append(True))
+
+        bridge.undo()
+
+        assert len(signals) == 1
+
+    def test_cut_adjusts_markers(self, test_video: Path):
+        """Cutting a segment adjusts marker positions."""
+        session = EditorSession()
+        session.load(test_video)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bridge = create_session_bridge(session, workspace_dir=Path(tmp))
+
+            # Add markers
+            bridge.addMarker(0.3)  # Before cut
+            bridge.addMarker(0.7)  # Inside cut [0.5, 1.0]
+            bridge.addMarker(1.5)  # After cut
+
+            # Apply cut
+            bridge.applyCut(0.5, 1.0)
+
+            # Check adjusted markers
+            markers = bridge.markers
+            assert 0.3 in markers  # Before - unchanged
+            assert 0.7 not in markers  # Inside - removed
+            assert 1.0 in markers  # 1.5 shifted by 0.5
+
+    def test_cut_emits_markers_changed_when_adjusted(self, test_video: Path):
+        """Cutting emits markersChanged when markers are adjusted."""
+        session = EditorSession()
+        session.load(test_video)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bridge = create_session_bridge(session, workspace_dir=Path(tmp))
+            bridge.addMarker(1.5)  # Will be adjusted
+
+            signals = []
+            bridge.markersChanged.connect(lambda: signals.append(True))
+
+            bridge.applyCut(0.5, 1.0)
+
+            assert len(signals) == 1

@@ -133,6 +133,29 @@ ApplicationWindow {
             }
         }
 
+        // Cut bar for marker-based cutting
+        CutBar {
+            id: cutBar
+            objectName: "cutBar"
+            Layout.fillWidth: true
+            Layout.preferredHeight: 32
+            duration: videoPlayer.duration
+            markers: session.markers
+            enabled: session.hasVideo && !cropOverlay.hasCrop
+
+            onMarkerAdded: function(timeSeconds) {
+                session.addMarker(timeSeconds)
+            }
+
+            onMarkerRemoved: function(timeSeconds) {
+                session.removeMarker(timeSeconds)
+            }
+
+            onSegmentCut: function(startSeconds, endSeconds) {
+                session.applyCut(startSeconds, endSeconds)
+            }
+        }
+
         // Timeline scrubber
         Timeline {
             id: timeline
@@ -153,11 +176,6 @@ ApplicationWindow {
 
             onThumbnailsRequested: function(count, height, revision) {
                 session.requestThumbnails(count, height, revision)
-            }
-
-            onCutRequested: function(startMs, endMs) {
-                // Convert to seconds for the backend
-                session.applyCut(startMs / 1000.0, endMs / 1000.0)
             }
 
             Connections {

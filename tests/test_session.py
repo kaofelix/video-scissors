@@ -220,3 +220,247 @@ class TestUndoRedo:
         assert after_undo > after_edit
         assert after_redo > after_undo
         assert after_close > after_redo
+
+
+class TestCutMarkers:
+    """Tests for cut marker management in EditorSession."""
+
+    def test_session_starts_with_no_markers(self):
+        """A new session has no cut markers."""
+        session = EditorSession()
+
+        assert session.markers == ()
+
+    def test_add_marker(self, test_video: Path):
+        """Can add a cut marker at a specific time."""
+        session = EditorSession()
+        session.load(test_video)
+
+        session.add_marker(1.5)
+
+        assert session.markers == (1.5,)
+
+    def test_markers_are_sorted(self, test_video: Path):
+        """Markers are always returned in sorted order."""
+        session = EditorSession()
+        session.load(test_video)
+
+        session.add_marker(3.0)
+        session.add_marker(1.0)
+        session.add_marker(2.0)
+
+        assert session.markers == (1.0, 2.0, 3.0)
+
+    def test_duplicate_markers_ignored(self, test_video: Path):
+        """Adding a marker at the same time is ignored."""
+        session = EditorSession()
+        session.load(test_video)
+
+        session.add_marker(1.5)
+        session.add_marker(1.5)
+
+        assert session.markers == (1.5,)
+
+    def test_remove_marker(self, test_video: Path):
+        """Can remove a marker by its time."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.0)
+        session.add_marker(2.0)
+
+        session.remove_marker(1.0)
+
+        assert session.markers == (2.0,)
+
+    def test_remove_nonexistent_marker_is_noop(self, test_video: Path):
+        """Removing a marker that doesn't exist does nothing."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.0)
+
+        session.remove_marker(5.0)  # doesn't exist
+
+        assert session.markers == (1.0,)
+
+    def test_clear_markers(self, test_video: Path):
+        """Can clear all markers at once."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.0)
+        session.add_marker(2.0)
+
+        session.clear_markers()
+
+        assert session.markers == ()
+
+    def test_loading_video_clears_markers(self, test_video: Path, tmp_path: Path):
+        """Loading a new video clears existing markers."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.0)
+
+        new_video = tmp_path / "new.mp4"
+        new_video.touch()
+        session.load(new_video)
+
+        assert session.markers == ()
+
+    def test_close_clears_markers(self, test_video: Path):
+        """Closing the session clears markers."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.0)
+
+        session.close()
+
+        assert session.markers == ()
+
+
+class TestMarkerUndoRedo:
+    """Tests for undo/redo of marker operations."""
+
+    def test_add_marker_is_undoable(self, test_video: Path):
+        """Adding a marker can be undone."""
+        session = EditorSession()
+        session.load(test_video)
+
+        session.add_marker(1.5)
+        assert session.markers == (1.5,)
+
+        session.undo()
+        assert session.markers == ()
+
+    def test_add_marker_is_redoable(self, test_video: Path):
+        """Undone marker add can be redone."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.5)
+        session.undo()
+
+        session.redo()
+
+        assert session.markers == (1.5,)
+
+    def test_remove_marker_is_undoable(self, test_video: Path):
+        """Removing a marker can be undone."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.0)
+        session.add_marker(2.0)
+
+        session.remove_marker(1.0)
+        assert session.markers == (2.0,)
+
+        session.undo()
+        assert session.markers == (1.0, 2.0)
+
+    def test_clear_markers_is_undoable(self, test_video: Path):
+        """Clearing markers can be undone."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.0)
+        session.add_marker(2.0)
+
+        session.clear_markers()
+        assert session.markers == ()
+
+        session.undo()
+        assert session.markers == (1.0, 2.0)
+
+    def test_marker_state_preserved_across_video_edit_undo(self, test_video: Path, tmp_path: Path):
+        """Marker state is preserved when undoing video edits."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.0)
+
+        # Simulate a video edit (e.g., crop)
+        edited = tmp_path / "edited.mp4"
+        edited.touch()
+        session.set_working_video(edited)
+
+        # Add another marker after edit
+        session.add_marker(2.0)
+
+        # Undo the second marker add
+        session.undo()
+        assert session.markers == (1.0,)
+        assert session.working_video == edited
+
+        # Undo the video edit
+        session.undo()
+        assert session.markers == (1.0,)
+        assert session.working_video == test_video
+
+
+class TestMarkerAdjustmentOnCut:
+    """Tests for marker time adjustment when cuts are applied."""
+
+    def test_markers_before_cut_unchanged(self, test_video: Path, tmp_path: Path):
+        """Markers before the cut region stay at their original time."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(0.5)  # Before cut region
+
+        # Simulate cut from 1.0 to 2.0 (1 second removed)
+        edited = tmp_path / "cut.mp4"
+        edited.touch()
+        session.apply_cut(1.0, 2.0, edited)
+
+        assert 0.5 in session.markers
+
+    def test_markers_inside_cut_removed(self, test_video: Path, tmp_path: Path):
+        """Markers inside the cut region are removed."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.5)  # Inside cut region [1.0, 2.0]
+
+        edited = tmp_path / "cut.mp4"
+        edited.touch()
+        session.apply_cut(1.0, 2.0, edited)
+
+        assert 1.5 not in session.markers
+
+    def test_markers_after_cut_shifted(self, test_video: Path, tmp_path: Path):
+        """Markers after the cut region are shifted earlier by cut duration."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(3.0)  # After cut region [1.0, 2.0]
+
+        edited = tmp_path / "cut.mp4"
+        edited.touch()
+        session.apply_cut(1.0, 2.0, edited)  # 1 second removed
+
+        # Marker should shift from 3.0 to 2.0 (shifted by 1 second)
+        assert 2.0 in session.markers
+        assert 3.0 not in session.markers
+
+    def test_complex_marker_adjustment(self, test_video: Path, tmp_path: Path):
+        """Multiple markers are correctly adjusted on cut."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(0.5)  # Before - unchanged
+        session.add_marker(1.5)  # Inside - removed
+        session.add_marker(2.5)  # After - shifted to 1.5
+        session.add_marker(4.0)  # After - shifted to 3.0
+
+        edited = tmp_path / "cut.mp4"
+        edited.touch()
+        session.apply_cut(1.0, 2.0, edited)  # 1 second removed
+
+        assert session.markers == (0.5, 1.5, 3.0)
+
+    def test_cut_with_markers_is_undoable(self, test_video: Path, tmp_path: Path):
+        """Undoing a cut restores original marker positions."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(0.5)
+        session.add_marker(1.5)
+        session.add_marker(3.0)
+
+        edited = tmp_path / "cut.mp4"
+        edited.touch()
+        session.apply_cut(1.0, 2.0, edited)
+
+        session.undo()
+
+        assert session.markers == (0.5, 1.5, 3.0)
