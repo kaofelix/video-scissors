@@ -122,6 +122,9 @@ Item {
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
 
+                // Marker color (adapts to dark/light mode)
+                property color markerColor: palette.text
+
                 // Dashed line
                 Column {
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -135,7 +138,7 @@ Item {
                         Rectangle {
                             width: 1
                             height: 2
-                            color: "#333333"
+                            color: markerItem.markerColor
                         }
                     }
                 }
@@ -156,25 +159,28 @@ Item {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: 8
                         height: 6
-                        color: "#333333"
-                        border.color: "#666666"
+                        color: markerItem.markerColor
+                        border.color: palette.mid
                         border.width: 1
                         radius: 1
                     }
 
                     // Triangle part (pointing down)
                     Canvas {
+                        id: triangleCanvas
                         anchors.top: handleRect.bottom
                         anchors.topMargin: -1
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: 6
                         height: 4
 
+                        property color fillColor: markerItem.markerColor
+
+                        onFillColorChanged: requestPaint()
+
                         onPaint: {
                             var ctx = getContext("2d")
-                            ctx.fillStyle = "#333333"
-                            ctx.strokeStyle = "#666666"
-                            ctx.lineWidth = 1
+                            ctx.fillStyle = fillColor
                             ctx.beginPath()
                             ctx.moveTo(0, 0)
                             ctx.lineTo(width, 0)
