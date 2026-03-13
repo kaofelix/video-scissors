@@ -36,6 +36,12 @@ Any borrowed idea must be adapted to Video Scissors principles and architecture.
 - `docs/architecture.md` contains the architecture guidance.
 - dex contains the active plan and task breakdown.
 
+## Tooling
+
+- Use `ruff` for linting
+- Use `ruff format` for formatting
+- Use `ty` for type checking
+
 ## Development workflow
 
 Run the app:
