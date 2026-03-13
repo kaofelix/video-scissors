@@ -140,6 +140,14 @@ class SessionBridge(QObject):
         if self._session.markers != old_markers:
             self.markersChanged.emit()
 
+    @Slot(float, float)
+    def moveMarker(self, old_time: float, new_time: float) -> None:
+        """Move a marker from old_time to new_time."""
+        old_markers = self._session.markers
+        self._session.move_marker(old_time, new_time)
+        if self._session.markers != old_markers:
+            self.markersChanged.emit()
+
     @Slot(int, int, int, int)
     def applyCrop(self, x: int, y: int, width: int, height: int) -> None:
         """Apply a crop operation to the working video."""

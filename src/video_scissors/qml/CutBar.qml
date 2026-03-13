@@ -9,6 +9,7 @@ import QtQuick.Controls
  *
  * Interactions:
  *   - Click to place a cut marker at that frame
+ *   - Drag markers to reposition them
  *   - Hover over segment (between markers) → highlights the section
  *   - Hold ⌘/Ctrl + click on segment → removes that segment
  *
@@ -16,10 +17,12 @@ import QtQuick.Controls
  *   - duration: Total video duration in milliseconds
  *   - markers: List of marker times in seconds (from backend)
  *   - enabled: Whether interaction is allowed
+ *   - trackLeftOffset: Left offset of the track area (for alignment with Timeline)
  *
  * Signals:
  *   - markerAdded(real timeSeconds): User clicked to add a marker
  *   - markerRemoved(real timeSeconds): User removed a marker
+ *   - markerMoved(real oldTime, real newTime): User dragged a marker
  *   - segmentCut(real startSeconds, real endSeconds): User cut a segment
  */
 Item {
@@ -30,9 +33,13 @@ Item {
     property var markers: []            // Marker times in seconds
     property bool enabled: true
 
+    // Expose track offset for Timeline alignment
+    readonly property real trackLeftOffset: scissorIcon.width + scissorIcon.anchors.leftMargin + track.anchors.leftMargin
+
     // Signals
     signal markerAdded(real timeSeconds)
     signal markerRemoved(real timeSeconds)
+    signal markerMoved(real oldTime, real newTime)
     signal segmentCut(real startSeconds, real endSeconds)
 
     // Internal: segment boundaries (0, markers..., duration/1000)
@@ -48,7 +55,7 @@ Item {
     // Internal: hovered segment index (-1 for none)
     property int hoveredSegment: -1
 
-    implicitHeight: 32
+    implicitHeight: 20
 
     // Scissor icon on the left
     Text {
@@ -57,9 +64,9 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         anchors.leftMargin: 4
         text: "✂"
-        font.pixelSize: 16
+        font.pixelSize: 14
         color: palette.text
-        opacity: 0.7
+        opacity: 0.5
     }
 
     // Track area (to the right of scissor icon)
@@ -69,11 +76,11 @@ Item {
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        anchors.leftMargin: 8
-        anchors.topMargin: 4
-        anchors.bottomMargin: 4
+        anchors.leftMargin: 6
+        anchors.topMargin: 2
+        anchors.bottomMargin: 2
         color: palette.mid
-        radius: 4
+        radius: 3
 
         // Segment highlight overlays
         Repeater {
@@ -91,8 +98,8 @@ Item {
                 width: Math.max(0, endPos - startPos)
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
-                color: isHovered ? "#4488CC" : "transparent"
-                opacity: isHovered ? 0.4 : 0
+                color: "white"
+                opacity: isHovered ? 0.25 : 0
 
                 Behavior on opacity {
                     NumberAnimation { duration: 100 }
@@ -100,36 +107,126 @@ Item {
             }
         }
 
-        // Marker lines
+        // Marker lines and handles
         Repeater {
             model: root.markers
 
-            Rectangle {
-                id: markerLine
+            Item {
+                id: markerItem
                 property real markerTime: modelData
                 property real markerPos: root.duration > 0 ? (markerTime * 1000 / root.duration) * track.width : 0
+                property bool isDragging: false
 
-                x: markerPos - width / 2
-                width: 2
+                x: markerPos
+                width: 1
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
-                color: "#FF6644"
-                radius: 1
 
-                // Marker handle for visibility
-                Rectangle {
+                // Dashed line
+                Column {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top
+                    anchors.topMargin: 8
+                    anchors.bottom: parent.bottom
+                    spacing: 2
+
+                    Repeater {
+                        model: Math.floor((parent.height - 8) / 4)
+                        Rectangle {
+                            width: 1
+                            height: 2
+                            color: "#333333"
+                        }
+                    }
+                }
+
+                // Marker handle (rectangle with triangle pointing down)
+                Item {
+                    id: handleArea
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.top: parent.top
                     anchors.topMargin: -2
-                    width: 8
-                    height: 8
-                    radius: 4
-                    color: parent.color
+                    width: 10
+                    height: 10
+
+                    // Rectangle part
+                    Rectangle {
+                        id: handleRect
+                        anchors.top: parent.top
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 8
+                        height: 6
+                        color: "#333333"
+                        border.color: "#666666"
+                        border.width: 1
+                        radius: 1
+                    }
+
+                    // Triangle part (pointing down)
+                    Canvas {
+                        anchors.top: handleRect.bottom
+                        anchors.topMargin: -1
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 6
+                        height: 4
+
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            ctx.fillStyle = "#333333"
+                            ctx.strokeStyle = "#666666"
+                            ctx.lineWidth = 1
+                            ctx.beginPath()
+                            ctx.moveTo(0, 0)
+                            ctx.lineTo(width, 0)
+                            ctx.lineTo(width / 2, height)
+                            ctx.closePath()
+                            ctx.fill()
+                        }
+                    }
+
+                    // Drag area for the handle
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        cursorShape: Qt.SizeHorCursor
+                        drag.target: null
+                        preventStealing: true
+
+                        property real dragStartTime: 0
+
+                        onPressed: function(mouse) {
+                            markerItem.isDragging = true
+                            dragStartTime = markerItem.markerTime
+                            mouse.accepted = true
+                        }
+
+                        onReleased: function(mouse) {
+                            if (markerItem.isDragging) {
+                                markerItem.isDragging = false
+                                var newTime = xToTime(markerItem.x)
+                                if (Math.abs(newTime - dragStartTime) > 0.01) {
+                                    root.markerMoved(dragStartTime, newTime)
+                                }
+                            }
+                        }
+
+                        onPositionChanged: function(mouse) {
+                            if (markerItem.isDragging) {
+                                var globalX = mapToItem(track, mouse.x, 0).x
+                                var clampedX = Math.max(0, Math.min(globalX, track.width))
+                                markerItem.x = clampedX
+                            }
+                        }
+
+                        function xToTime(x) {
+                            return (x / track.width) * (root.duration / 1000)
+                        }
+                    }
                 }
             }
         }
 
-        // Mouse interaction area
+        // Mouse interaction area for track
         MouseArea {
             id: mouseArea
             anchors.fill: parent
@@ -186,9 +283,9 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         anchors.rightMargin: 8
         text: root.hoveredSegment >= 0 ? "Hold ⌘ and click to cut" : ""
-        font.pixelSize: 11
+        font.pixelSize: 10
         color: palette.text
-        opacity: 0.6
+        opacity: 0.5
         visible: root.hoveredSegment >= 0
 
         Behavior on opacity {

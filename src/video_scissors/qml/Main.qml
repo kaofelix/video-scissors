@@ -138,7 +138,7 @@ ApplicationWindow {
             id: cutBar
             objectName: "cutBar"
             Layout.fillWidth: true
-            Layout.preferredHeight: 32
+            Layout.preferredHeight: 20
             duration: videoPlayer.duration
             markers: session.markers
             enabled: session.hasVideo && !cropOverlay.hasCrop
@@ -149,6 +149,10 @@ ApplicationWindow {
 
             onMarkerRemoved: function(timeSeconds) {
                 session.removeMarker(timeSeconds)
+            }
+
+            onMarkerMoved: function(oldTime, newTime) {
+                session.moveMarker(oldTime, newTime)
             }
 
             onSegmentCut: function(startSeconds, endSeconds) {
@@ -162,6 +166,8 @@ ApplicationWindow {
             objectName: "timeline"
             Layout.fillWidth: true
             Layout.preferredHeight: 60
+            Layout.topMargin: -4  // Bring closer to cut bar
+            leftPadding: cutBar.trackLeftOffset  // Align with cut bar track
             position: videoPlayer.position
             duration: videoPlayer.duration
             videoWidth: session.videoWidth

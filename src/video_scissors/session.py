@@ -167,6 +167,16 @@ class EditorSession:
         self._push_undo()
         self._current = SessionSnapshot(video=self._current.video, markers=())
 
+    def move_marker(self, old_time: float, new_time: float) -> None:
+        """Move a marker from old_time to new_time."""
+        if self._current is None:
+            return
+        if old_time not in self._current.markers:
+            return
+        self._push_undo()
+        new_markers = tuple(sorted(new_time if t == old_time else t for t in self._current.markers))
+        self._current = SessionSnapshot(video=self._current.video, markers=new_markers)
+
     def apply_cut(self, start: float, end: float, output_path: Path) -> None:
         """Apply a cut and adjust markers accordingly.
 

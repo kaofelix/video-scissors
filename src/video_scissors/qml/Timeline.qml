@@ -30,6 +30,7 @@ Item {
     property int videoRevision: 0      // Strategic identity for the working video
     property bool enabled: true
     property var thumbnailUrls: []     // List of thumbnail file:// URLs
+    property real leftPadding: 0       // Left padding to align with other components
 
     // Signals
     signal seekRequested(real positionMs)
@@ -39,7 +40,8 @@ Item {
     property bool dragging: false
     property int thumbHeight: height - 16  // Track height (with margins)
     property int thumbWidth: videoHeight > 0 ? Math.floor(thumbHeight * videoWidth / videoHeight) : 0
-    property int frameCount: thumbWidth > 0 ? Math.ceil(width / thumbWidth) : 0
+    property real trackWidth: width - leftPadding  // Effective track width
+    property int frameCount: thumbWidth > 0 ? Math.ceil(trackWidth / thumbWidth) : 0
 
     implicitHeight: 60
 
@@ -63,7 +65,11 @@ Item {
     // Timeline track with thumbnails
     Rectangle {
         id: track
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: root.leftPadding
         anchors.topMargin: 8
         anchors.bottomMargin: 8
         color: palette.mid
@@ -134,7 +140,7 @@ Item {
         height: parent.height
         radius: 1
         color: "white"
-        x: root.duration > 0 ? (root.position / root.duration) * (root.width - width) : 0
+        x: root.leftPadding + (root.duration > 0 ? (root.position / root.duration) * (root.trackWidth - width) : 0)
 
         // Smooth animation during playback, instant during drag
         Behavior on x {
@@ -159,7 +165,7 @@ Item {
     // Mouse interaction area
     MouseArea {
         id: mouseArea
-        anchors.fill: parent
+        anchors.fill: track
         enabled: root.enabled && root.duration > 0
         hoverEnabled: true
         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
@@ -180,8 +186,8 @@ Item {
         }
 
         function xToTime(x) {
-            var clampedX = Math.max(0, Math.min(x, root.width))
-            return (clampedX / root.width) * root.duration
+            var clampedX = Math.max(0, Math.min(x, root.trackWidth))
+            return (clampedX / root.trackWidth) * root.duration
         }
 
         function seekToPosition(x) {

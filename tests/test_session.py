@@ -315,6 +315,39 @@ class TestCutMarkers:
 
         assert session.markers == ()
 
+    def test_move_marker(self, test_video: Path):
+        """Can move a marker to a new position."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.0)
+        session.add_marker(2.0)
+
+        session.move_marker(1.0, 1.5)
+
+        assert session.markers == (1.5, 2.0)
+
+    def test_move_marker_maintains_sort(self, test_video: Path):
+        """Moving a marker keeps markers sorted."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.0)
+        session.add_marker(2.0)
+        session.add_marker(3.0)
+
+        session.move_marker(1.0, 2.5)
+
+        assert session.markers == (2.0, 2.5, 3.0)
+
+    def test_move_nonexistent_marker_is_noop(self, test_video: Path):
+        """Moving a marker that doesn't exist does nothing."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.0)
+
+        session.move_marker(5.0, 2.0)
+
+        assert session.markers == (1.0,)
+
 
 class TestMarkerUndoRedo:
     """Tests for undo/redo of marker operations."""
@@ -363,6 +396,19 @@ class TestMarkerUndoRedo:
 
         session.clear_markers()
         assert session.markers == ()
+
+        session.undo()
+        assert session.markers == (1.0, 2.0)
+
+    def test_move_marker_is_undoable(self, test_video: Path):
+        """Moving a marker can be undone."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.0)
+        session.add_marker(2.0)
+
+        session.move_marker(1.0, 1.5)
+        assert session.markers == (1.5, 2.0)
 
         session.undo()
         assert session.markers == (1.0, 2.0)
