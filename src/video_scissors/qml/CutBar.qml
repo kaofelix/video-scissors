@@ -125,22 +125,14 @@ Item {
                 // Marker color (adapts to dark/light mode)
                 property color markerColor: palette.text
 
-                // Dashed line
-                Column {
+                // Solid line extending down from handle
+                Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.top: parent.top
-                    anchors.topMargin: 8
+                    anchors.topMargin: 7
                     anchors.bottom: parent.bottom
-                    spacing: 2
-
-                    Repeater {
-                        model: Math.floor((parent.height - 8) / 4)
-                        Rectangle {
-                            width: 1
-                            height: 2
-                            color: markerItem.markerColor
-                        }
-                    }
+                    width: 1
+                    color: markerItem.markerColor
                 }
 
                 // Marker handle (rectangle with triangle pointing down)
