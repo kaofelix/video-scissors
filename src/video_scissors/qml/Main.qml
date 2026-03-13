@@ -26,13 +26,13 @@ ApplicationWindow {
                 text: qsTr("&Undo")
                 shortcut: StandardKey.Undo
                 enabled: session.canUndo && !cropOverlay.hasCrop
-                onTriggered: session.undo()
+                onTriggered: session.undo(videoPlayer.position)
             }
             Action {
                 text: qsTr("&Redo")
                 shortcut: StandardKey.Redo
                 enabled: session.canRedo && !cropOverlay.hasCrop
-                onTriggered: session.redo()
+                onTriggered: session.redo(videoPlayer.position)
             }
         }
     }
@@ -74,7 +74,10 @@ ApplicationWindow {
                             // Play-pause trick to render first frame immediately
                             videoPlayer.play()
                             videoPlayer.pause()
-                            videoPlayer.position = 0
+                            // Use suggested position from backend, clamped to valid range
+                            var suggestedPos = session.suggestedPositionMs
+                            var maxPos = videoPlayer.duration > 0 ? videoPlayer.duration : 0
+                            videoPlayer.position = Math.min(suggestedPos, maxPos)
                         } else {
                             videoPlayer.stop()
                             videoPlayer.source = ""
@@ -94,7 +97,7 @@ ApplicationWindow {
                 videoRevision: session.workingVideoRevision
 
                 onCropApplied: function(x, y, width, height) {
-                    session.applyCrop(x, y, width, height)
+                    session.applyCrop(x, y, width, height, videoPlayer.position)
                     clear()
                 }
 
@@ -170,7 +173,7 @@ ApplicationWindow {
             }
 
             onSegmentCut: function(startSeconds, endSeconds) {
-                session.applyCut(startSeconds, endSeconds)
+                session.applyCut(startSeconds, endSeconds, videoPlayer.position)
             }
 
             Connections {

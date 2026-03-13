@@ -439,3 +439,96 @@ class TestBridgeMarkers:
             bridge.applyCut(0.5, 1.0)
 
             assert len(signals) == 1
+
+
+class TestBridgeSuggestedPosition:
+    """Tests for playhead position stability across operations."""
+
+    def test_suggested_position_defaults_to_zero(self, test_video: Path):
+        """suggestedPositionMs defaults to 0."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        assert bridge.suggestedPositionMs == 0
+
+    def test_apply_crop_preserves_position(self, test_video: Path):
+        """applyCrop sets suggestedPositionMs to the passed position."""
+        session = EditorSession()
+        session.load(test_video)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bridge = create_session_bridge(session, workspace_dir=Path(tmp))
+
+            bridge.applyCrop(0, 0, 160, 120, 1500)  # currentPositionMs=1500
+
+            assert bridge.suggestedPositionMs == 1500
+
+    def test_apply_cut_position_before_cut_unchanged(self, test_video: Path):
+        """Position before cut region stays unchanged."""
+        session = EditorSession()
+        session.load(test_video)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bridge = create_session_bridge(session, workspace_dir=Path(tmp))
+
+            # Position at 300ms, cut is [500ms, 1000ms]
+            bridge.applyCut(0.5, 1.0, 300)
+
+            assert bridge.suggestedPositionMs == 300
+
+    def test_apply_cut_position_inside_cut_snaps_to_start(self, test_video: Path):
+        """Position inside cut region snaps to cut start."""
+        session = EditorSession()
+        session.load(test_video)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bridge = create_session_bridge(session, workspace_dir=Path(tmp))
+
+            # Position at 700ms, cut is [500ms, 1000ms]
+            bridge.applyCut(0.5, 1.0, 700)
+
+            assert bridge.suggestedPositionMs == 500
+
+    def test_apply_cut_position_after_cut_shifted(self, test_video: Path):
+        """Position after cut region is shifted by cut duration."""
+        session = EditorSession()
+        session.load(test_video)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bridge = create_session_bridge(session, workspace_dir=Path(tmp))
+
+            # Position at 1500ms, cut is [500ms, 1000ms] (500ms cut)
+            # New position should be 1500 - 500 = 1000ms
+            bridge.applyCut(0.5, 1.0, 1500)
+
+            assert bridge.suggestedPositionMs == 1000
+
+    def test_undo_preserves_position(self, test_video: Path, tmp_path: Path):
+        """Undo keeps position at same timestamp."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        edited = tmp_path / "edited.mp4"
+        generate_test_video(edited, duration=1.0)
+        bridge.setWorkingVideo(str(edited))
+
+        bridge.undo(750)  # currentPositionMs=750
+
+        assert bridge.suggestedPositionMs == 750
+
+    def test_redo_preserves_position(self, test_video: Path, tmp_path: Path):
+        """Redo keeps position at same timestamp."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        edited = tmp_path / "edited.mp4"
+        generate_test_video(edited, duration=1.0)
+        bridge.setWorkingVideo(str(edited))
+        bridge.undo(0)
+
+        bridge.redo(500)  # currentPositionMs=500
+
+        assert bridge.suggestedPositionMs == 500

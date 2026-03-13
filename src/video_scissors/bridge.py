@@ -35,6 +35,7 @@ class SessionBridge(QObject):
         self._session = session
         self._thumbnail_extractor = thumbnail_extractor
         self._edit_service = edit_service
+        self._suggested_position_ms: float = 0
 
     @Property(bool, notify=videoChanged)
     def hasVideo(self) -> bool:
@@ -78,6 +79,11 @@ class SessionBridge(QObject):
         """Cut markers as list of times in seconds."""
         return list(self._session.markers)
 
+    @Property(float, notify=videoChanged)
+    def suggestedPositionMs(self) -> float:
+        """Suggested playhead position in milliseconds after an operation."""
+        return self._suggested_position_ms
+
     @Slot(str)
     def openFile(self, path: str) -> None:
         """Open a video file."""
@@ -96,22 +102,24 @@ class SessionBridge(QObject):
         self._session.set_working_video(Path(path))
         self.videoChanged.emit()
 
-    @Slot()
-    def undo(self) -> None:
+    @Slot(float)
+    def undo(self, currentPositionMs: float = 0) -> None:
         """Undo the last edit."""
         if self._session.can_undo:
             old_markers = self._session.markers
             self._session.undo()
+            self._suggested_position_ms = currentPositionMs
             self.videoChanged.emit()
             if self._session.markers != old_markers:
                 self.markersChanged.emit()
 
-    @Slot()
-    def redo(self) -> None:
+    @Slot(float)
+    def redo(self, currentPositionMs: float = 0) -> None:
         """Redo the last undone edit."""
         if self._session.can_redo:
             old_markers = self._session.markers
             self._session.redo()
+            self._suggested_position_ms = currentPositionMs
             self.videoChanged.emit()
             if self._session.markers != old_markers:
                 self.markersChanged.emit()
@@ -148,18 +156,21 @@ class SessionBridge(QObject):
         if self._session.markers != old_markers:
             self.markersChanged.emit()
 
-    @Slot(int, int, int, int)
-    def applyCrop(self, x: int, y: int, width: int, height: int) -> None:
+    @Slot(int, int, int, int, float)
+    def applyCrop(
+        self, x: int, y: int, width: int, height: int, currentPositionMs: float = 0
+    ) -> None:
         """Apply a crop operation to the working video."""
         if self._session.working_video is None:
             return
         request = CropRequest(x=x, y=y, width=width, height=height)
         result = self._edit_service.apply_crop(self._session.working_video, request)
         self._session.set_working_video(result.output_path)
+        self._suggested_position_ms = currentPositionMs
         self.videoChanged.emit()
 
-    @Slot(float, float)
-    def applyCut(self, start: float, end: float) -> None:
+    @Slot(float, float, float)
+    def applyCut(self, start: float, end: float, currentPositionMs: float = 0) -> None:
         """Apply a cut (segment removal) to the working video."""
         if self._session.working_video is None:
             return
@@ -167,6 +178,19 @@ class SessionBridge(QObject):
         result = self._edit_service.apply_cut(self._session.working_video, request)
         old_markers = self._session.markers
         self._session.apply_cut(start, end, result.output_path)
+        # Adjust position based on cut region (start/end are in seconds, position in ms)
+        start_ms = start * 1000
+        end_ms = end * 1000
+        cut_duration_ms = end_ms - start_ms
+        if currentPositionMs < start_ms:
+            # Before cut: unchanged
+            self._suggested_position_ms = currentPositionMs
+        elif currentPositionMs < end_ms:
+            # Inside cut: snap to cut start
+            self._suggested_position_ms = start_ms
+        else:
+            # After cut: shift by cut duration
+            self._suggested_position_ms = currentPositionMs - cut_duration_ms
         self.videoChanged.emit()
         if self._session.markers != old_markers:
             self.markersChanged.emit()
