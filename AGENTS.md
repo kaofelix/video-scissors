@@ -35,3 +35,42 @@ Any borrowed idea must be adapted to Video Scissors principles and architecture.
 - `docs/project-principles.md` contains the project principles.
 - `docs/architecture.md` contains the architecture guidance.
 - dex contains the active plan and task breakdown.
+
+## Development workflow
+
+Run the app:
+```
+make run
+```
+
+Run tests (headless by default):
+```
+make test
+```
+
+Run GUI tests with visible window (useful for debugging):
+```
+make test-gui
+```
+
+Run all checks (lint, typecheck, test):
+```
+make check
+```
+
+### Test fixtures
+
+Video fixtures are generated on the fly using FFmpeg's `testsrc` filter. No external video files needed. See `tests/conftest.py` for:
+- `test_video` fixture - 320x240, 2 seconds
+- `generate_test_video()` helper for custom dimensions/durations
+
+### Screenshot capture
+
+GUI tests can capture screenshots for debugging:
+```python
+def test_something(app_window, capture_screenshot):
+    # ... set up state ...
+    capture_screenshot(app_window, "my_test_name")
+```
+
+Screenshots are saved to `tests/screenshots/` (gitignored).
