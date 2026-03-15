@@ -25,6 +25,7 @@ Item {
     property int videoWidth: 0
     property int videoHeight: 0
     property int videoRevision: 0
+    property real videoFrameRate: 30.0  // Default to 30fps
 
     // Marker properties
     property var markers: []
@@ -76,6 +77,7 @@ Item {
         // Top-right: CutBar track
         CutBar {
             id: cutBar
+            objectName: "cutBar"
             anchors.left: iconCell.right
             anchors.right: parent.right
             anchors.top: parent.top
@@ -86,6 +88,7 @@ Item {
             enabled: root.enabled
             topRadius: root.cornerRadius
             bottomRadius: 0  // Square where it meets scrubber
+            videoFrameRate: root.videoFrameRate
 
             onMarkerAdded: function(timeSeconds) {
                 root.markerAdded(timeSeconds)

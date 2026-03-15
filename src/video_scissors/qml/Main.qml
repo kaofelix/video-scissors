@@ -147,6 +147,7 @@ ApplicationWindow {
             duration: videoPlayer.duration
             videoWidth: session.videoWidth
             videoHeight: session.videoHeight
+            videoFrameRate: session.videoFrameRate
             videoRevision: session.workingVideoRevision
             markers: session.markers
             enabled: session.hasVideo && !cropOverlay.hasCrop

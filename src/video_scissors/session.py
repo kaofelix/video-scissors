@@ -13,6 +13,7 @@ class WorkingVideoState:
     path: Path
     width: int
     height: int
+    frame_rate: float
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,13 @@ class EditorSession:
         return self._current.video.height
 
     @property
+    def video_frame_rate(self) -> float:
+        """Frame rate of the loaded video in fps."""
+        if self._current is None:
+            return 0.0
+        return self._current.video.frame_rate
+
+    @property
     def working_video_revision(self) -> int:
         """Monotonic revision for working-video identity changes."""
         return self._working_video_revision
@@ -105,20 +113,22 @@ class EditorSession:
 
     def _build_working_state(self, path: Path) -> WorkingVideoState:
         """Build a working-video snapshot from a file path."""
-        width, height = self._probe_dimensions(path)
-        return WorkingVideoState(path=path, width=width, height=height)
+        width, height, frame_rate = self._probe_video_metadata(path)
+        return WorkingVideoState(path=path, width=width, height=height, frame_rate=frame_rate)
 
-    def _probe_dimensions(self, path: Path) -> tuple[int, int]:
-        """Probe video file to get dimensions."""
+    def _probe_video_metadata(self, path: Path) -> tuple[int, int, float]:
+        """Probe video file to get dimensions and frame rate."""
         try:
             container = av.open(str(path))
             stream = container.streams.video[0]
             width = stream.width
             height = stream.height
+            # Frame rate from average_rate (Fraction), convert to float
+            frame_rate = float(stream.average_rate) if stream.average_rate else 0.0
             container.close()
-            return width, height
+            return width, height, frame_rate
         except Exception:
-            return 0, 0
+            return 0, 0, 0.0
 
     def _bump_working_video_revision(self) -> None:
         """Advance the working-video revision after a state change."""

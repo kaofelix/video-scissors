@@ -64,6 +64,11 @@ class SessionBridge(QObject):
         """Height of the loaded video in pixels."""
         return self._session.video_height
 
+    @Property(float, notify=videoChanged)
+    def videoFrameRate(self) -> float:
+        """Frame rate of the loaded video in fps."""
+        return self._session.video_frame_rate
+
     @Property(bool, notify=videoChanged)
     def canUndo(self) -> bool:
         """True if there are edits that can be undone."""

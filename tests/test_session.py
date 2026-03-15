@@ -47,6 +47,20 @@ class TestEditorSession:
 
         assert session.has_video is True
 
+    def test_video_frame_rate_available_after_load(self, test_video: Path):
+        """Frame rate is available after loading a video."""
+        session = EditorSession()
+        session.load(test_video)
+
+        # Test video is generated at 30fps
+        assert session.video_frame_rate == 30.0
+
+    def test_video_frame_rate_zero_when_no_video(self):
+        """Frame rate is 0 when no video is loaded."""
+        session = EditorSession()
+
+        assert session.video_frame_rate == 0.0
+
     def test_close_clears_session(self, test_video: Path):
         """Closing returns session to empty state."""
         session = EditorSession()
