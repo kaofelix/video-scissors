@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
-import QtMultimedia
 
 ApplicationWindow {
     id: window
@@ -25,14 +24,14 @@ ApplicationWindow {
             Action {
                 text: qsTr("&Undo")
                 shortcut: StandardKey.Undo
-                enabled: session.canUndo && !cropOverlay.hasCrop
-                onTriggered: session.undo(videoPlayer.position)
+                enabled: session.canUndo && !videoArea.hasCrop
+                onTriggered: session.undo(videoArea.position)
             }
             Action {
                 text: qsTr("&Redo")
                 shortcut: StandardKey.Redo
-                enabled: session.canRedo && !cropOverlay.hasCrop
-                onTriggered: session.redo(videoPlayer.position)
+                enabled: session.canRedo && !videoArea.hasCrop
+                onTriggered: session.redo(videoArea.position)
             }
         }
     }
@@ -51,89 +50,10 @@ ApplicationWindow {
         anchors.margins: 8
         spacing: 8
 
-        // Video display area
-        Rectangle {
-            id: videoContainer
+        VideoArea {
+            id: videoArea
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#000000"
-
-            Video {
-                id: videoPlayer
-                objectName: "videoPlayer"
-                anchors.fill: parent
-                fillMode: VideoOutput.PreserveAspectFit
-                source: session.workingVideoUrl
-
-                // Reload when working video changes
-                Connections {
-                    target: session
-                    function onVideoChanged() {
-                        if (session.hasVideo) {
-                            videoPlayer.source = session.workingVideoUrl
-                            // Play-pause trick to render first frame immediately
-                            videoPlayer.play()
-                            videoPlayer.pause()
-                            // Use suggested position from backend, clamped to valid range
-                            var suggestedPos = session.suggestedPositionMs
-                            var maxPos = videoPlayer.duration > 0 ? videoPlayer.duration : 0
-                            videoPlayer.position = Math.min(suggestedPos, maxPos)
-                        } else {
-                            videoPlayer.stop()
-                            videoPlayer.source = ""
-                        }
-                    }
-                }
-            }
-
-            // Crop overlay - always active when video loaded
-            CropOverlay {
-                id: cropOverlay
-                objectName: "cropOverlay"
-                anchors.fill: parent
-                visible: session.hasVideo
-                videoWidth: session.videoWidth
-                videoHeight: session.videoHeight
-                videoRevision: session.workingVideoRevision
-
-                onCropApplied: function(x, y, width, height) {
-                    session.applyCrop(x, y, width, height, videoPlayer.position)
-                    clear()
-                }
-
-                onCropCancelled: {
-                    // Already cleared by cancel()
-                }
-            }
-
-            // Placeholder when no video
-            Text {
-                anchors.centerIn: parent
-                text: "File → Open or ⌘O"
-                color: "#888888"
-                font.pixelSize: 18
-                visible: !session.hasVideo
-            }
-
-            // Crop controls - appear when crop selection exists
-            Row {
-                anchors.bottom: parent.bottom
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottomMargin: 16
-                spacing: 16
-                visible: cropOverlay.hasCrop
-
-                Button {
-                    text: "Cancel"
-                    onClicked: cropOverlay.cancel()
-                }
-
-                Button {
-                    text: "Apply Crop"
-                    highlighted: true
-                    onClicked: cropOverlay.apply()
-                }
-            }
         }
 
         // Unified timeline with cut bar and scrubber
@@ -143,18 +63,17 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.preferredHeight: implicitHeight
 
-            position: videoPlayer.position
-            duration: videoPlayer.duration
+            position: videoArea.position
+            duration: videoArea.duration
             videoWidth: session.videoWidth
             videoHeight: session.videoHeight
-            videoFrameRate: session.videoFrameRate
             videoRevision: session.workingVideoRevision
             markers: session.markers
-            enabled: session.hasVideo && !cropOverlay.hasCrop
-            focus: session.hasVideo && !cropOverlay.hasCrop
+            enabled: session.hasVideo && !videoArea.hasCrop
+            focus: session.hasVideo && !videoArea.hasCrop
 
             onSeekRequested: function(positionMs) {
-                videoPlayer.position = positionMs
+                videoArea.position = positionMs
             }
 
             onThumbnailsRequested: function(count, height, revision) {
@@ -174,7 +93,7 @@ ApplicationWindow {
             }
 
             onSegmentCut: function(startSeconds, endSeconds) {
-                session.applyCut(startSeconds, endSeconds, videoPlayer.position)
+                session.applyCut(startSeconds, endSeconds, videoArea.position)
             }
 
             Connections {
@@ -185,54 +104,14 @@ ApplicationWindow {
             }
         }
 
-        // Controls row
-        RowLayout {
+        TransportControls {
             Layout.fillWidth: true
-            spacing: 8
-
-            // Spacer matching time display width for centering
-            Item {
-                Layout.preferredWidth: timeDisplay.width
-            }
-
-            Item { Layout.fillWidth: true }
-
-            RoundButton {
-                id: playButton
-                implicitWidth: 48
-                implicitHeight: 48
-                enabled: session.hasVideo
-                text: videoPlayer.playbackState === MediaPlayer.PlayingState ? "⏸" : "▶"
-                font.pixelSize: 18
-                onClicked: {
-                    if (videoPlayer.playbackState === MediaPlayer.PlayingState) {
-                        videoPlayer.pause()
-                    } else {
-                        videoPlayer.play()
-                    }
-                }
-
-                background: Rectangle {
-                    radius: playButton.radius
-                    color: playButton.hovered ? palette.mid : "transparent"
-                }
-            }
-
-            Item { Layout.fillWidth: true }
-
-            // Time display
-            Text {
-                id: timeDisplay
-                color: palette.text
-                text: formatTime(videoPlayer.position) + " / " + formatTime(videoPlayer.duration)
-
-                function formatTime(ms) {
-                    var seconds = Math.floor(ms / 1000)
-                    var minutes = Math.floor(seconds / 60)
-                    seconds = seconds % 60
-                    return minutes + ":" + (seconds < 10 ? "0" : "") + seconds
-                }
-            }
+            position: videoArea.position
+            duration: videoArea.duration
+            playbackState: videoArea.playbackState
+            enabled: session.hasVideo
+            onPlayRequested: videoArea.play()
+            onPauseRequested: videoArea.pause()
         }
     }
 }
