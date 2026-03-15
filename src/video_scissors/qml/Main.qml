@@ -84,12 +84,12 @@ ApplicationWindow {
                 session.addMarker(timeSeconds)
             }
 
-            onMarkerRemoved: function(timeSeconds) {
-                session.removeMarker(timeSeconds)
+            onMarkerRemoved: function(markerId) {
+                session.removeMarker(markerId)
             }
 
-            onMarkerMoved: function(oldTime, newTime) {
-                session.moveMarker(oldTime, newTime)
+            onMarkerMoved: function(markerId, newTime) {
+                session.moveMarker(markerId, newTime)
             }
 
             onSegmentCut: function(startSeconds, endSeconds) {

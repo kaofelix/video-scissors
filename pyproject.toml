@@ -45,5 +45,7 @@ root = ["src", "tests"]
 [tool.ty.rules]
 # PySide6 stubs are incomplete, downgrade some errors
 unresolved-attribute = "warn"
-# PySide6 Property returns str at runtime but typed as Property
+# PySide6 Property returns actual value at runtime but typed as Property
 unsupported-operator = "warn"
+invalid-argument-type = "warn"
+not-subscriptable = "warn"

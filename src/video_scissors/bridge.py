@@ -80,9 +80,9 @@ class SessionBridge(QObject):
         return self._session.can_redo
 
     @Property(list, notify=markersChanged)
-    def markers(self) -> list[float]:
-        """Cut markers as list of times in seconds."""
-        return list(self._session.markers)
+    def markers(self) -> list[dict]:
+        """Cut markers as list of {id, time} objects for QML."""
+        return [{"id": m.id, "time": m.time} for m in self._session.markers]
 
     @Property(float, notify=videoChanged)
     def suggestedPositionMs(self) -> float:
@@ -129,19 +129,23 @@ class SessionBridge(QObject):
             if self._session.markers != old_markers:
                 self.markersChanged.emit()
 
-    @Slot(float)
-    def addMarker(self, time: float) -> None:
-        """Add a cut marker at the specified time in seconds."""
-        old_markers = self._session.markers
-        self._session.add_marker(time)
-        if self._session.markers != old_markers:
-            self.markersChanged.emit()
+    @Slot(float, result="QVariant")
+    def addMarker(self, time: float) -> dict | None:
+        """Add a cut marker at the specified time in seconds.
 
-    @Slot(float)
-    def removeMarker(self, time: float) -> None:
-        """Remove the cut marker at the specified time."""
+        Returns the created marker {id, time} or None if duplicate.
+        """
+        marker = self._session.add_marker(time)
+        if marker is not None:
+            self.markersChanged.emit()
+            return {"id": marker.id, "time": marker.time}
+        return None
+
+    @Slot(str)
+    def removeMarker(self, marker_id: str) -> None:
+        """Remove the cut marker by its ID."""
         old_markers = self._session.markers
-        self._session.remove_marker(time)
+        self._session.remove_marker(marker_id)
         if self._session.markers != old_markers:
             self.markersChanged.emit()
 
@@ -153,11 +157,11 @@ class SessionBridge(QObject):
         if self._session.markers != old_markers:
             self.markersChanged.emit()
 
-    @Slot(float, float)
-    def moveMarker(self, old_time: float, new_time: float) -> None:
-        """Move a marker from old_time to new_time."""
+    @Slot(str, float)
+    def moveMarker(self, marker_id: str, new_time: float) -> None:
+        """Move a marker to a new time by its ID."""
         old_markers = self._session.markers
-        self._session.move_marker(old_time, new_time)
+        self._session.move_marker(marker_id, new_time)
         if self._session.markers != old_markers:
             self.markersChanged.emit()
 

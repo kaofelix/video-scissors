@@ -21,16 +21,16 @@ import Qt5Compat.GraphicalEffects
  *
  * Properties:
  *   - duration: Total video duration in milliseconds
- *   - markers: List of marker times in seconds (from backend)
+ *   - markers: List of marker objects {id, time} (from backend)
  *   - enabled: Whether interaction is allowed
  *   - topRadius: Radius for top corners
  *   - bottomRadius: Radius for bottom corners (0 when joined with Scrubber)
- *   - selectedMarkerTime: Time of selected marker (-1 if none)
+ *   - selectedMarkerId: ID of selected marker ("" if none)
  *
  * Signals:
  *   - markerAdded(real timeSeconds): User clicked to add a marker
- *   - markerRemoved(real timeSeconds): User removed a marker
- *   - markerMoved(real oldTime, real newTime): User dragged a marker
+ *   - markerRemoved(string markerId): User removed a marker
+ *   - markerMoved(string markerId, real newTime): User moved a marker
  *   - segmentCut(real startSeconds, real endSeconds): User cut a segment
  */
 Item {
@@ -38,11 +38,11 @@ Item {
 
     // Public properties
     property real duration: 0           // Total duration in ms
-    property var markers: []            // Marker times in seconds
+    property var markers: []            // Marker objects {id, time}
     property bool enabled: true
     property int topRadius: 6           // Top corner radius
     property int bottomRadius: 0        // Bottom corner radius (0 when joined)
-    property real selectedMarkerTime: -1  // Selected marker time (-1 = none)
+    property string selectedMarkerId: ""  // Selected marker ID ("" = none)
     property real videoFrameRate: 30.0  // Video frame rate for precise movement
 
     // Movement increments for keyboard navigation (in seconds)
@@ -52,70 +52,74 @@ Item {
 
     // Signals
     signal markerAdded(real timeSeconds)
-    signal markerRemoved(real timeSeconds)
-    signal markerMoved(real oldTime, real newTime)
+    signal markerRemoved(string markerId)
+    signal markerMoved(string markerId, real newTime)
     signal segmentCut(real startSeconds, real endSeconds)
 
+    // Helper: find marker by ID
+    function findMarkerById(id) {
+        for (var i = 0; i < markers.length; i++) {
+            if (markers[i].id === id) {
+                return markers[i]
+            }
+        }
+        return null
+    }
+
+    // Helper: get selected marker's time
+    function selectedMarkerTime() {
+        var marker = findMarkerById(selectedMarkerId)
+        return marker ? marker.time : -1
+    }
+
     // Enable focus for keyboard handling
-    focus: selectedMarkerTime >= 0
+    focus: selectedMarkerId !== ""
     Keys.onPressed: function(event) {
-        if (selectedMarkerTime < 0) return
+        if (selectedMarkerId === "") return
+
+        var marker = findMarkerById(selectedMarkerId)
+        if (!marker) return
 
         var increment = (event.modifiers & Qt.ShiftModifier) ? largeIncrement : smallIncrement
         var durationSeconds = duration / 1000
+        var currentTime = marker.time
 
         if (event.key === Qt.Key_Left) {
-            var newTime = Math.max(0, selectedMarkerTime - increment)
-            if (newTime !== selectedMarkerTime) {
-                var oldTime = selectedMarkerTime
-                // Update selection first so onMarkersChanged finds it
-                selectedMarkerTime = newTime
-                root.markerMoved(oldTime, newTime)
+            var newTime = Math.max(0, currentTime - increment)
+            if (newTime !== currentTime) {
+                root.markerMoved(selectedMarkerId, newTime)
             }
             event.accepted = true
         } else if (event.key === Qt.Key_Right) {
-            var newTime = Math.min(durationSeconds, selectedMarkerTime + increment)
-            if (newTime !== selectedMarkerTime) {
-                var oldTime = selectedMarkerTime
-                // Update selection first so onMarkersChanged finds it
-                selectedMarkerTime = newTime
-                root.markerMoved(oldTime, newTime)
+            var newTime = Math.min(durationSeconds, currentTime + increment)
+            if (newTime !== currentTime) {
+                root.markerMoved(selectedMarkerId, newTime)
             }
             event.accepted = true
         } else if (event.key === Qt.Key_Delete || event.key === Qt.Key_Backspace) {
-            var timeToRemove = selectedMarkerTime
-            selectedMarkerTime = -1
-            root.markerRemoved(timeToRemove)
+            var idToRemove = selectedMarkerId
+            selectedMarkerId = ""
+            root.markerRemoved(idToRemove)
             event.accepted = true
         }
     }
 
-    // Internal: segment boundaries (0, markers..., duration/1000)
+    // Internal: segment boundaries (0, marker times..., duration/1000)
     property var segmentBoundaries: {
         var bounds = [0]
         for (var i = 0; i < markers.length; i++) {
-            bounds.push(markers[i])
+            bounds.push(markers[i].time)
         }
         bounds.push(duration / 1000)
         return bounds
     }
 
     // Clear selection when selected marker is removed externally
-    // Use small epsilon for floating point comparison
     onMarkersChanged: {
-        if (selectedMarkerTime >= 0) {
-            var found = false
-            var epsilon = 0.001  // 1ms tolerance
-            for (var i = 0; i < markers.length; i++) {
-                if (Math.abs(markers[i] - selectedMarkerTime) < epsilon) {
-                    // Update to exact value from markers array
-                    selectedMarkerTime = markers[i]
-                    found = true
-                    break
-                }
-            }
+        if (selectedMarkerId !== "") {
+            var found = findMarkerById(selectedMarkerId)
             if (!found) {
-                selectedMarkerTime = -1
+                selectedMarkerId = ""
             }
         }
     }
@@ -200,11 +204,12 @@ Item {
 
             Item {
                 id: markerItem
-                property real markerTime: modelData
+                property string markerId: modelData.id
+                property real markerTime: modelData.time
                 property real markerPos: root.duration > 0 ? (markerTime * 1000 / root.duration) * track.width : 0
                 property bool isDragging: false
                 property bool isHovered: false
-                property bool isSelected: root.selectedMarkerTime === markerTime
+                property bool isSelected: root.selectedMarkerId === markerId
 
                 x: markerPos
                 width: 1
@@ -364,13 +369,12 @@ Item {
                                 markerItem.isDragging = false
                                 var newTime = xToTime(markerItem.x)
                                 if (Math.abs(newTime - dragStartTime) > 0.01) {
-                                    // Set selection before move so onMarkersChanged can find it
-                                    root.selectedMarkerTime = newTime
-                                    root.markerMoved(dragStartTime, newTime)
+                                    root.selectedMarkerId = markerItem.markerId
+                                    root.markerMoved(markerItem.markerId, newTime)
                                     wasDragged = true
                                 } else {
-                                    // Didn't move enough, keep selection on original
-                                    root.selectedMarkerTime = dragStartTime
+                                    // Didn't move enough, just select
+                                    root.selectedMarkerId = markerItem.markerId
                                 }
                                 root.forceActiveFocus()
                             }
@@ -379,7 +383,7 @@ Item {
                         onClicked: function(mouse) {
                             // Select this marker (already handled in onReleased for drag case)
                             if (!wasDragged) {
-                                root.selectedMarkerTime = markerItem.markerTime
+                                root.selectedMarkerId = markerItem.markerId
                                 root.forceActiveFocus()
                             }
                         }
@@ -427,7 +431,7 @@ Item {
                 // Check if click is near any marker (within hit area)
                 var clickedOnMarker = false
                 for (var i = 0; i < root.markers.length; i++) {
-                    var markerTime = root.markers[i]
+                    var markerTime = root.markers[i].time
                     var markerX = root.duration > 0 ? (markerTime * 1000 / root.duration) * track.width : 0
                     if (Math.abs(mouse.x - markerX) < 12) {  // Hit area matches handle MouseArea margins
                         clickedOnMarker = true
@@ -441,7 +445,7 @@ Item {
                 }
 
                 // Deselect any selected marker when clicking elsewhere
-                root.selectedMarkerTime = -1
+                root.selectedMarkerId = ""
 
                 if (root.hasSegments && (mouse.modifiers & Qt.ControlModifier || mouse.modifiers & Qt.MetaModifier)) {
                     // ⌘/Ctrl + click: cut the hovered segment (only when markers exist)

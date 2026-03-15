@@ -2,7 +2,35 @@
 
 from pathlib import Path
 
-from video_scissors.session import EditorSession
+import pytest
+
+from video_scissors.session import EditorSession, Marker
+
+
+class TestMarker:
+    """Tests for the Marker dataclass."""
+
+    def test_marker_has_id_and_time(self):
+        """Marker stores id and time."""
+        marker = Marker(id="abc123", time=1.5)
+
+        assert marker.id == "abc123"
+        assert marker.time == 1.5
+
+    def test_marker_create_generates_unique_ids(self):
+        """Marker.create generates unique IDs."""
+        marker1 = Marker.create(1.0)
+        marker2 = Marker.create(2.0)
+
+        assert marker1.id != marker2.id
+        assert len(marker1.id) == 32  # UUID hex length
+
+    def test_marker_is_immutable(self):
+        """Marker is frozen (immutable)."""
+        marker = Marker(id="abc", time=1.0)
+
+        with pytest.raises(AttributeError):
+            marker.time = 2.0  # type: ignore
 
 
 class TestEditorSession:
@@ -236,6 +264,11 @@ class TestUndoRedo:
         assert after_close > after_redo
 
 
+def marker_times(markers: tuple[Marker, ...]) -> tuple[float, ...]:
+    """Helper to extract times from markers for assertions."""
+    return tuple(m.time for m in markers)
+
+
 class TestCutMarkers:
     """Tests for cut marker management in EditorSession."""
 
@@ -245,17 +278,30 @@ class TestCutMarkers:
 
         assert session.markers == ()
 
-    def test_add_marker(self, test_video: Path):
-        """Can add a cut marker at a specific time."""
+    def test_add_marker_returns_marker_with_id(self, test_video: Path):
+        """Adding a marker returns the created Marker with an ID."""
         session = EditorSession()
         session.load(test_video)
 
-        session.add_marker(1.5)
+        marker = session.add_marker(1.5)
 
-        assert session.markers == (1.5,)
+        assert marker is not None
+        assert marker.time == 1.5
+        assert len(marker.id) == 32
 
-    def test_markers_are_sorted(self, test_video: Path):
-        """Markers are always returned in sorted order."""
+    def test_add_marker_stores_marker(self, test_video: Path):
+        """Added marker appears in markers list."""
+        session = EditorSession()
+        session.load(test_video)
+
+        marker = session.add_marker(1.5)
+
+        assert len(session.markers) == 1
+        assert session.markers[0].id == marker.id
+        assert session.markers[0].time == 1.5
+
+    def test_markers_are_sorted_by_time(self, test_video: Path):
+        """Markers are always returned sorted by time."""
         session = EditorSession()
         session.load(test_video)
 
@@ -263,38 +309,39 @@ class TestCutMarkers:
         session.add_marker(1.0)
         session.add_marker(2.0)
 
-        assert session.markers == (1.0, 2.0, 3.0)
+        assert marker_times(session.markers) == (1.0, 2.0, 3.0)
 
-    def test_duplicate_markers_ignored(self, test_video: Path):
+    def test_duplicate_time_markers_ignored(self, test_video: Path):
         """Adding a marker at the same time is ignored."""
         session = EditorSession()
         session.load(test_video)
 
         session.add_marker(1.5)
-        session.add_marker(1.5)
+        result = session.add_marker(1.5)
 
-        assert session.markers == (1.5,)
+        assert result is None
+        assert len(session.markers) == 1
 
-    def test_remove_marker(self, test_video: Path):
-        """Can remove a marker by its time."""
+    def test_remove_marker_by_id(self, test_video: Path):
+        """Can remove a marker by its ID."""
         session = EditorSession()
         session.load(test_video)
-        session.add_marker(1.0)
+        marker1 = session.add_marker(1.0)
         session.add_marker(2.0)
 
-        session.remove_marker(1.0)
+        session.remove_marker(marker1.id)
 
-        assert session.markers == (2.0,)
+        assert marker_times(session.markers) == (2.0,)
 
     def test_remove_nonexistent_marker_is_noop(self, test_video: Path):
-        """Removing a marker that doesn't exist does nothing."""
+        """Removing a marker ID that doesn't exist does nothing."""
         session = EditorSession()
         session.load(test_video)
         session.add_marker(1.0)
 
-        session.remove_marker(5.0)  # doesn't exist
+        session.remove_marker("nonexistent-id")
 
-        assert session.markers == (1.0,)
+        assert len(session.markers) == 1
 
     def test_clear_markers(self, test_video: Path):
         """Can clear all markers at once."""
@@ -329,38 +376,50 @@ class TestCutMarkers:
 
         assert session.markers == ()
 
-    def test_move_marker(self, test_video: Path):
-        """Can move a marker to a new position."""
+    def test_move_marker_by_id(self, test_video: Path):
+        """Can move a marker to a new position by ID."""
         session = EditorSession()
         session.load(test_video)
-        session.add_marker(1.0)
+        marker1 = session.add_marker(1.0)
         session.add_marker(2.0)
 
-        session.move_marker(1.0, 1.5)
+        session.move_marker(marker1.id, 1.5)
 
-        assert session.markers == (1.5, 2.0)
+        assert marker_times(session.markers) == (1.5, 2.0)
 
     def test_move_marker_maintains_sort(self, test_video: Path):
         """Moving a marker keeps markers sorted."""
         session = EditorSession()
         session.load(test_video)
-        session.add_marker(1.0)
+        marker1 = session.add_marker(1.0)
         session.add_marker(2.0)
         session.add_marker(3.0)
 
-        session.move_marker(1.0, 2.5)
+        session.move_marker(marker1.id, 2.5)
 
-        assert session.markers == (2.0, 2.5, 3.0)
+        assert marker_times(session.markers) == (2.0, 2.5, 3.0)
+
+    def test_move_marker_preserves_id(self, test_video: Path):
+        """Moving a marker preserves its ID."""
+        session = EditorSession()
+        session.load(test_video)
+        marker = session.add_marker(1.0)
+        original_id = marker.id
+
+        session.move_marker(marker.id, 2.0)
+
+        assert session.markers[0].id == original_id
+        assert session.markers[0].time == 2.0
 
     def test_move_nonexistent_marker_is_noop(self, test_video: Path):
-        """Moving a marker that doesn't exist does nothing."""
+        """Moving a marker ID that doesn't exist does nothing."""
         session = EditorSession()
         session.load(test_video)
         session.add_marker(1.0)
 
-        session.move_marker(5.0, 2.0)
+        session.move_marker("nonexistent-id", 2.0)
 
-        assert session.markers == (1.0,)
+        assert len(session.markers) == 1
 
 
 class TestMarkerUndoRedo:
@@ -372,7 +431,7 @@ class TestMarkerUndoRedo:
         session.load(test_video)
 
         session.add_marker(1.5)
-        assert session.markers == (1.5,)
+        assert marker_times(session.markers) == (1.5,)
 
         session.undo()
         assert session.markers == ()
@@ -386,20 +445,20 @@ class TestMarkerUndoRedo:
 
         session.redo()
 
-        assert session.markers == (1.5,)
+        assert marker_times(session.markers) == (1.5,)
 
     def test_remove_marker_is_undoable(self, test_video: Path):
         """Removing a marker can be undone."""
         session = EditorSession()
         session.load(test_video)
-        session.add_marker(1.0)
+        marker1 = session.add_marker(1.0)
         session.add_marker(2.0)
 
-        session.remove_marker(1.0)
-        assert session.markers == (2.0,)
+        session.remove_marker(marker1.id)
+        assert marker_times(session.markers) == (2.0,)
 
         session.undo()
-        assert session.markers == (1.0, 2.0)
+        assert marker_times(session.markers) == (1.0, 2.0)
 
     def test_clear_markers_is_undoable(self, test_video: Path):
         """Clearing markers can be undone."""
@@ -412,20 +471,20 @@ class TestMarkerUndoRedo:
         assert session.markers == ()
 
         session.undo()
-        assert session.markers == (1.0, 2.0)
+        assert marker_times(session.markers) == (1.0, 2.0)
 
     def test_move_marker_is_undoable(self, test_video: Path):
         """Moving a marker can be undone."""
         session = EditorSession()
         session.load(test_video)
-        session.add_marker(1.0)
+        marker1 = session.add_marker(1.0)
         session.add_marker(2.0)
 
-        session.move_marker(1.0, 1.5)
-        assert session.markers == (1.5, 2.0)
+        session.move_marker(marker1.id, 1.5)
+        assert marker_times(session.markers) == (1.5, 2.0)
 
         session.undo()
-        assert session.markers == (1.0, 2.0)
+        assert marker_times(session.markers) == (1.0, 2.0)
 
     def test_marker_state_preserved_across_video_edit_undo(self, test_video: Path, tmp_path: Path):
         """Marker state is preserved when undoing video edits."""
@@ -443,12 +502,12 @@ class TestMarkerUndoRedo:
 
         # Undo the second marker add
         session.undo()
-        assert session.markers == (1.0,)
+        assert marker_times(session.markers) == (1.0,)
         assert session.working_video == edited
 
         # Undo the video edit
         session.undo()
-        assert session.markers == (1.0,)
+        assert marker_times(session.markers) == (1.0,)
         assert session.working_video == test_video
 
 
@@ -466,7 +525,7 @@ class TestMarkerAdjustmentOnCut:
         edited.touch()
         session.apply_cut(1.0, 2.0, edited)
 
-        assert 0.5 in session.markers
+        assert 0.5 in marker_times(session.markers)
 
     def test_markers_inside_cut_removed(self, test_video: Path, tmp_path: Path):
         """Markers inside the cut region are removed."""
@@ -478,7 +537,7 @@ class TestMarkerAdjustmentOnCut:
         edited.touch()
         session.apply_cut(1.0, 2.0, edited)
 
-        assert 1.5 not in session.markers
+        assert 1.5 not in marker_times(session.markers)
 
     def test_markers_after_cut_shifted(self, test_video: Path, tmp_path: Path):
         """Markers after the cut region are shifted earlier by cut duration."""
@@ -491,8 +550,9 @@ class TestMarkerAdjustmentOnCut:
         session.apply_cut(1.0, 2.0, edited)  # 1 second removed
 
         # Marker should shift from 3.0 to 2.0 (shifted by 1 second)
-        assert 2.0 in session.markers
-        assert 3.0 not in session.markers
+        times = marker_times(session.markers)
+        assert 2.0 in times
+        assert 3.0 not in times
 
     def test_complex_marker_adjustment(self, test_video: Path, tmp_path: Path):
         """Multiple markers are correctly adjusted on cut."""
@@ -507,7 +567,7 @@ class TestMarkerAdjustmentOnCut:
         edited.touch()
         session.apply_cut(1.0, 2.0, edited)  # 1 second removed
 
-        assert session.markers == (0.5, 1.5, 3.0)
+        assert marker_times(session.markers) == (0.5, 1.5, 3.0)
 
     def test_cut_with_markers_is_undoable(self, test_video: Path, tmp_path: Path):
         """Undoing a cut restores original marker positions."""
@@ -523,4 +583,4 @@ class TestMarkerAdjustmentOnCut:
 
         session.undo()
 
-        assert session.markers == (0.5, 1.5, 3.0)
+        assert marker_times(session.markers) == (0.5, 1.5, 3.0)

@@ -40,8 +40,8 @@ Item {
     signal seekRequested(real positionMs)
     signal thumbnailsRequested(int count, int height, int revision)
     signal markerAdded(real timeSeconds)
-    signal markerRemoved(real timeSeconds)
-    signal markerMoved(real oldTime, real newTime)
+    signal markerRemoved(string markerId)
+    signal markerMoved(string markerId, real newTime)
     signal segmentCut(real startSeconds, real endSeconds)
 
     // Layout constants
@@ -93,11 +93,11 @@ Item {
             onMarkerAdded: function(timeSeconds) {
                 root.markerAdded(timeSeconds)
             }
-            onMarkerRemoved: function(timeSeconds) {
-                root.markerRemoved(timeSeconds)
+            onMarkerRemoved: function(markerId) {
+                root.markerRemoved(markerId)
             }
-            onMarkerMoved: function(oldTime, newTime) {
-                root.markerMoved(oldTime, newTime)
+            onMarkerMoved: function(markerId, newTime) {
+                root.markerMoved(markerId, newTime)
             }
             onSegmentCut: function(startSeconds, endSeconds) {
                 root.segmentCut(startSeconds, endSeconds)

@@ -236,7 +236,7 @@ class TestCutBar:
         timeline = app_window.findChild(QObject, "timeline")
         markers = timeline.property("markers")
         assert len(markers) == 1
-        assert markers[0] == 0.5
+        assert markers[0]["time"] == 0.5
 
     def test_multiple_markers_displayed(self, app_window, qtbot, test_video, capture_screenshot):
         """Multiple markers are displayed on the timeline."""
@@ -267,13 +267,13 @@ class TestMarkerSelection:
 
         cutbar = app_window.findChild(QObject, "cutBar")
         assert cutbar is not None
-        # selectedMarkerTime should be -1 (no selection)
-        assert cutbar.property("selectedMarkerTime") == -1
+        # selectedMarkerId should be empty (no selection)
+        assert cutbar.property("selectedMarkerId") == ""
 
     def test_click_marker_selects_it(self, app_window, qtbot, test_video):
         """Clicking on a marker selects it."""
         app_window._bridge.openFile(str(test_video))
-        app_window._bridge.addMarker(1.0)  # At 50% for a 2-second video
+        marker = app_window._bridge.addMarker(1.0)  # At 50% for a 2-second video
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
@@ -290,20 +290,20 @@ class TestMarkerSelection:
         qtbot.mouseClick(app_window, Qt.LeftButton, pos=window_pos.toPoint())
         qtbot.wait(50)
 
-        assert cutbar.property("selectedMarkerTime") == 1.0
+        assert cutbar.property("selectedMarkerId") == marker["id"]
 
     def test_click_elsewhere_deselects_marker(self, app_window, qtbot, test_video):
         """Clicking on empty track area deselects the selected marker."""
         app_window._bridge.openFile(str(test_video))
-        app_window._bridge.addMarker(1.0)
+        marker = app_window._bridge.addMarker(1.0)
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
 
         # First select the marker
-        cutbar.setProperty("selectedMarkerTime", 1.0)
+        cutbar.setProperty("selectedMarkerId", marker["id"])
         qtbot.wait(50)
-        assert cutbar.property("selectedMarkerTime") == 1.0
+        assert cutbar.property("selectedMarkerId") == marker["id"]
 
         # Click on empty area (far from marker)
         cutbar_width = cutbar.property("width")
@@ -316,18 +316,18 @@ class TestMarkerSelection:
         qtbot.wait(50)
 
         # Should be deselected
-        assert cutbar.property("selectedMarkerTime") == -1
+        assert cutbar.property("selectedMarkerId") == ""
 
     def test_arrow_key_moves_selected_marker(self, app_window, qtbot, test_video):
         """Arrow keys move the selected marker by small increments."""
         app_window._bridge.openFile(str(test_video))
-        app_window._bridge.addMarker(1.0)
+        marker = app_window._bridge.addMarker(1.0)
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
 
         # Select the marker
-        cutbar.setProperty("selectedMarkerTime", 1.0)
+        cutbar.setProperty("selectedMarkerId", marker["id"])
         cutbar.setProperty("focus", True)
         qtbot.wait(50)
 
@@ -338,18 +338,18 @@ class TestMarkerSelection:
         # Marker should have moved right (small increment)
         markers = app_window._bridge.markers
         assert len(markers) == 1
-        assert markers[0] > 1.0  # Moved right
+        assert markers[0]["time"] > 1.0  # Moved right
 
     def test_shift_arrow_moves_by_larger_increment(self, app_window, qtbot, test_video):
         """Shift+Arrow moves marker by larger increment."""
         app_window._bridge.openFile(str(test_video))
-        app_window._bridge.addMarker(1.0)
+        marker = app_window._bridge.addMarker(1.0)
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
 
         # Select the marker
-        cutbar.setProperty("selectedMarkerTime", 1.0)
+        cutbar.setProperty("selectedMarkerId", marker["id"])
         cutbar.setProperty("focus", True)
         qtbot.wait(50)
 
@@ -360,18 +360,18 @@ class TestMarkerSelection:
         markers = app_window._bridge.markers
         assert len(markers) == 1
         # Should move more than small increment
-        assert markers[0] > 1.0
+        assert markers[0]["time"] > 1.0
 
     def test_delete_key_removes_selected_marker(self, app_window, qtbot, test_video):
         """Delete key removes the selected marker."""
         app_window._bridge.openFile(str(test_video))
-        app_window._bridge.addMarker(1.0)
+        marker = app_window._bridge.addMarker(1.0)
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
 
         # Select the marker
-        cutbar.setProperty("selectedMarkerTime", 1.0)
+        cutbar.setProperty("selectedMarkerId", marker["id"])
         cutbar.setProperty("focus", True)
         qtbot.wait(50)
 
@@ -386,13 +386,13 @@ class TestMarkerSelection:
     def test_backspace_removes_selected_marker(self, app_window, qtbot, test_video):
         """Backspace key removes the selected marker."""
         app_window._bridge.openFile(str(test_video))
-        app_window._bridge.addMarker(1.0)
+        marker = app_window._bridge.addMarker(1.0)
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
 
         # Select the marker
-        cutbar.setProperty("selectedMarkerTime", 1.0)
+        cutbar.setProperty("selectedMarkerId", marker["id"])
         cutbar.setProperty("focus", True)
         qtbot.wait(50)
 
@@ -407,40 +407,40 @@ class TestMarkerSelection:
     def test_only_one_marker_selected_at_a_time(self, app_window, qtbot, test_video):
         """Clicking a different marker deselects the previous one."""
         app_window._bridge.openFile(str(test_video))
-        app_window._bridge.addMarker(0.5)
-        app_window._bridge.addMarker(1.5)
+        marker1 = app_window._bridge.addMarker(0.5)
+        marker2 = app_window._bridge.addMarker(1.5)
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
 
         # Select first marker
-        cutbar.setProperty("selectedMarkerTime", 0.5)
+        cutbar.setProperty("selectedMarkerId", marker1["id"])
         qtbot.wait(50)
-        assert cutbar.property("selectedMarkerTime") == 0.5
+        assert cutbar.property("selectedMarkerId") == marker1["id"]
 
         # Select second marker
-        cutbar.setProperty("selectedMarkerTime", 1.5)
+        cutbar.setProperty("selectedMarkerId", marker2["id"])
         qtbot.wait(50)
 
         # Only second should be selected
-        assert cutbar.property("selectedMarkerTime") == 1.5
+        assert cutbar.property("selectedMarkerId") == marker2["id"]
 
     def test_selection_cleared_when_marker_removed_externally(self, app_window, qtbot, test_video):
         """Selection is cleared when the selected marker is removed via undo or clear."""
         app_window._bridge.openFile(str(test_video))
-        app_window._bridge.addMarker(1.0)
+        marker = app_window._bridge.addMarker(1.0)
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
 
         # Select the marker
-        cutbar.setProperty("selectedMarkerTime", 1.0)
+        cutbar.setProperty("selectedMarkerId", marker["id"])
         qtbot.wait(50)
-        assert cutbar.property("selectedMarkerTime") == 1.0
+        assert cutbar.property("selectedMarkerId") == marker["id"]
 
         # Remove marker via bridge (simulates undo/clear)
-        app_window._bridge.removeMarker(1.0)
+        app_window._bridge.removeMarker(marker["id"])
         qtbot.wait(50)
 
         # Selection should be cleared
-        assert cutbar.property("selectedMarkerTime") == -1
+        assert cutbar.property("selectedMarkerId") == ""

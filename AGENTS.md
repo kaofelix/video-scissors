@@ -9,6 +9,35 @@ Use **dex** as the source of truth for planning and execution.
 - If planning starts in markdown, move the important details into dex and remove the planning file.
 - Read the relevant dex task and parent context before starting meaningful work.
 
+## Tooling
+
+- Use `uv` for all python commands
+- Use `ruff` for linting
+- Use `ruff format` for formatting
+- Use `ty` for type checking
+
+## Development workflow
+
+Run the app:
+```
+make run
+```
+
+Run tests (headless by default):
+```
+make test
+```
+
+Run GUI tests with visible window (useful for debugging):
+```
+make test-gui
+```
+
+Run all checks (lint, typecheck, test):
+```
+make check
+```
+
 ## Testing
 
 Follow the test pyramid deliberately:
@@ -36,33 +65,6 @@ Any borrowed idea must be adapted to Video Scissors principles and architecture.
 - `docs/architecture.md` contains the architecture guidance.
 - dex contains the active plan and task breakdown.
 
-## Tooling
-
-- Use `ruff` for linting
-- Use `ruff format` for formatting
-- Use `ty` for type checking
-
-## Development workflow
-
-Run the app:
-```
-make run
-```
-
-Run tests (headless by default):
-```
-make test
-```
-
-Run GUI tests with visible window (useful for debugging):
-```
-make test-gui
-```
-
-Run all checks (lint, typecheck, test):
-```
-make check
-```
 
 ### Test fixtures
 

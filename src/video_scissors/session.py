@@ -1,9 +1,23 @@
 """Editor session model - core editing state container."""
 
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import av
+
+
+@dataclass(frozen=True)
+class Marker:
+    """A cut marker with stable identity."""
+
+    id: str
+    time: float  # seconds
+
+    @staticmethod
+    def create(time: float) -> "Marker":
+        """Create a new marker with a generated ID."""
+        return Marker(id=uuid.uuid4().hex, time=time)
 
 
 @dataclass(frozen=True)
@@ -21,7 +35,7 @@ class SessionSnapshot:
     """Complete session state snapshot for undo/redo."""
 
     video: WorkingVideoState
-    markers: tuple[float, ...] = field(default_factory=tuple)
+    markers: tuple[Marker, ...] = field(default_factory=tuple)
 
 
 class EditorSession:
@@ -96,8 +110,8 @@ class EditorSession:
         return len(self._redo_stack) > 0
 
     @property
-    def markers(self) -> tuple[float, ...]:
-        """Cut markers as sorted tuple of times in seconds."""
+    def markers(self) -> tuple[Marker, ...]:
+        """Cut markers as sorted tuple by time."""
         if self._current is None:
             return ()
         return self._current.markers
@@ -149,25 +163,30 @@ class EditorSession:
         self._current = SessionSnapshot(video=video_state, markers=current_markers)
         self._bump_working_video_revision()
 
-    def add_marker(self, time: float) -> None:
-        """Add a cut marker at the specified time in seconds."""
-        if self._current is None:
-            return
-        # Check for duplicate
-        if time in self._current.markers:
-            return
-        self._push_undo()
-        new_markers = tuple(sorted(self._current.markers + (time,)))
-        self._current = SessionSnapshot(video=self._current.video, markers=new_markers)
+    def add_marker(self, time: float) -> Marker | None:
+        """Add a cut marker at the specified time in seconds.
 
-    def remove_marker(self, time: float) -> None:
-        """Remove a cut marker at the specified time."""
+        Returns the created Marker, or None if duplicate time.
+        """
+        if self._current is None:
+            return None
+        # Check for duplicate time
+        if any(m.time == time for m in self._current.markers):
+            return None
+        self._push_undo()
+        marker = Marker.create(time)
+        new_markers = tuple(sorted(self._current.markers + (marker,), key=lambda m: m.time))
+        self._current = SessionSnapshot(video=self._current.video, markers=new_markers)
+        return marker
+
+    def remove_marker(self, marker_id: str) -> None:
+        """Remove a cut marker by its ID."""
         if self._current is None:
             return
-        if time not in self._current.markers:
+        if not any(m.id == marker_id for m in self._current.markers):
             return
         self._push_undo()
-        new_markers = tuple(t for t in self._current.markers if t != time)
+        new_markers = tuple(m for m in self._current.markers if m.id != marker_id)
         self._current = SessionSnapshot(video=self._current.video, markers=new_markers)
 
     def clear_markers(self) -> None:
@@ -177,14 +196,18 @@ class EditorSession:
         self._push_undo()
         self._current = SessionSnapshot(video=self._current.video, markers=())
 
-    def move_marker(self, old_time: float, new_time: float) -> None:
-        """Move a marker from old_time to new_time."""
+    def move_marker(self, marker_id: str, new_time: float) -> None:
+        """Move a marker to a new time by its ID."""
         if self._current is None:
             return
-        if old_time not in self._current.markers:
+        if not any(m.id == marker_id for m in self._current.markers):
             return
         self._push_undo()
-        new_markers = tuple(sorted(new_time if t == old_time else t for t in self._current.markers))
+        updated = (
+            Marker(id=m.id, time=new_time) if m.id == marker_id else m
+            for m in self._current.markers
+        )
+        new_markers = tuple(sorted(updated, key=lambda m: m.time))
         self._current = SessionSnapshot(video=self._current.video, markers=new_markers)
 
     def apply_cut(self, start: float, end: float, output_path: Path) -> None:
@@ -203,15 +226,15 @@ class EditorSession:
             return
 
         cut_duration = end - start
-        adjusted_markers: list[float] = []
+        adjusted_markers: list[Marker] = []
 
         for marker in self._current.markers:
-            if marker < start:
+            if marker.time < start:
                 # Before cut: unchanged
                 adjusted_markers.append(marker)
-            elif marker >= end:
-                # After cut: shift earlier
-                adjusted_markers.append(marker - cut_duration)
+            elif marker.time >= end:
+                # After cut: shift earlier (preserve ID)
+                adjusted_markers.append(Marker(id=marker.id, time=marker.time - cut_duration))
             # Inside cut [start, end): removed (not added)
 
         self._push_undo()

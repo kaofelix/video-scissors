@@ -330,38 +330,57 @@ class TestBridgeWorkingVideoRevision:
         assert extractor.calls == [(test_video, 3, 40)]
 
 
+def marker_times_from_bridge(markers: list) -> list[float]:
+    """Extract times from bridge marker objects."""
+    return [m["time"] for m in markers]
+
+
 class TestBridgeMarkers:
     """Tests for cut marker operations via bridge."""
 
-    def test_markers_exposed_as_list(self, test_video: Path):
-        """Bridge exposes markers as a list for QML."""
+    def test_markers_exposed_as_list_of_objects(self, test_video: Path):
+        """Bridge exposes markers as a list of {id, time} objects for QML."""
         session = EditorSession()
         session.load(test_video)
         bridge = make_bridge(session)
 
         assert bridge.markers == []
 
+    def test_add_marker_returns_marker_object(self, test_video: Path):
+        """addMarker returns the created marker with id and time."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        result = bridge.addMarker(1.5)
+
+        assert result is not None
+        assert "id" in result
+        assert result["time"] == 1.5
+        assert len(result["id"]) == 32
+
     def test_add_marker_adds_to_list(self, test_video: Path):
-        """addMarker adds a marker at the specified time."""
+        """addMarker adds a marker object to the list."""
         session = EditorSession()
         session.load(test_video)
         bridge = make_bridge(session)
 
         bridge.addMarker(1.5)
 
-        assert bridge.markers == [1.5]
+        assert len(bridge.markers) == 1
+        assert bridge.markers[0]["time"] == 1.5
 
-    def test_remove_marker_removes_from_list(self, test_video: Path):
-        """removeMarker removes the marker at the specified time."""
+    def test_remove_marker_by_id(self, test_video: Path):
+        """removeMarker removes the marker by its ID."""
         session = EditorSession()
         session.load(test_video)
         bridge = make_bridge(session)
-        bridge.addMarker(1.0)
+        marker1 = bridge.addMarker(1.0)
         bridge.addMarker(2.0)
 
-        bridge.removeMarker(1.0)
+        bridge.removeMarker(marker1["id"])
 
-        assert bridge.markers == [2.0]
+        assert marker_times_from_bridge(bridge.markers) == [2.0]
 
     def test_clear_markers_removes_all(self, test_video: Path):
         """clearMarkers removes all markers."""
@@ -374,6 +393,19 @@ class TestBridgeMarkers:
         bridge.clearMarkers()
 
         assert bridge.markers == []
+
+    def test_move_marker_by_id(self, test_video: Path):
+        """moveMarker updates marker time by ID."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+        marker = bridge.addMarker(1.0)
+
+        bridge.moveMarker(marker["id"], 2.0)
+
+        assert len(bridge.markers) == 1
+        assert bridge.markers[0]["id"] == marker["id"]
+        assert bridge.markers[0]["time"] == 2.0
 
     def test_add_marker_emits_markers_changed(self, test_video: Path):
         """addMarker emits markersChanged signal."""
@@ -419,10 +451,10 @@ class TestBridgeMarkers:
             bridge.applyCut(0.5, 1.0)
 
             # Check adjusted markers
-            markers = bridge.markers
-            assert 0.3 in markers  # Before - unchanged
-            assert 0.7 not in markers  # Inside - removed
-            assert 1.0 in markers  # 1.5 shifted by 0.5
+            times = marker_times_from_bridge(bridge.markers)
+            assert 0.3 in times  # Before - unchanged
+            assert 0.7 not in times  # Inside - removed
+            assert 1.0 in times  # 1.5 shifted by 0.5
 
     def test_cut_emits_markers_changed_when_adjusted(self, test_video: Path):
         """Cutting emits markersChanged when markers are adjusted."""
