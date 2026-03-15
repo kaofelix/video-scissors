@@ -9,6 +9,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
+from video_scissors.document import effective_to_source, source_to_effective
 from video_scissors.services import CropRequest, CutRequest, EditService, ThumbnailExtractorProtocol
 from video_scissors.session import EditorSession
 
@@ -22,6 +23,7 @@ class SessionBridge(QObject):
 
     videoChanged = Signal()
     markersChanged = Signal()
+    editSpecChanged = Signal()
     thumbnailsReady = Signal(list)  # List of file:// URLs
 
     def __init__(
@@ -89,6 +91,51 @@ class SessionBridge(QObject):
         """Suggested playhead position in milliseconds after an operation."""
         return self._suggested_position_ms
 
+    @Property(list, notify=editSpecChanged)
+    def cutRegions(self) -> list[dict]:
+        """Cut regions as list of {start, end} in milliseconds for QML."""
+        return [
+            {"start": int(c.start * 1000), "end": int(c.end * 1000)}
+            for c in self._session.document.edit_spec.cuts
+        ]
+
+    @Property("QVariant", notify=editSpecChanged)
+    def cropRect(self) -> dict | None:
+        """Crop rectangle as {x, y, width, height} or None."""
+        crop = self._session.document.edit_spec.crop
+        if crop is None:
+            return None
+        return {"x": crop.x, "y": crop.y, "width": crop.width, "height": crop.height}
+
+    @Property(bool, notify=editSpecChanged)
+    def hasCuts(self) -> bool:
+        """True if there are cut regions."""
+        return len(self._session.document.edit_spec.cuts) > 0
+
+    @Property(bool, notify=editSpecChanged)
+    def hasCrop(self) -> bool:
+        """True if a crop is set."""
+        return self._session.document.edit_spec.crop is not None
+
+    @Property(float, notify=editSpecChanged)
+    def effectiveDurationMs(self) -> float:
+        """Duration after cuts applied, in milliseconds."""
+        return self._session.effective_duration * 1000
+
+    @Slot(float, result=float)
+    def sourceToEffective(self, source_ms: float) -> float:
+        """Convert source time (ms) to effective time (ms) for display."""
+        source_s = source_ms / 1000
+        effective_s = source_to_effective(source_s, self._session.document.edit_spec)
+        return effective_s * 1000
+
+    @Slot(float, result=float)
+    def effectiveToSource(self, effective_ms: float) -> float:
+        """Convert effective time (ms) to source time (ms) for seeking/cuts."""
+        effective_s = effective_ms / 1000
+        source_s = effective_to_source(effective_s, self._session.document.edit_spec)
+        return source_s * 1000
+
     @Slot(str)
     def openFile(self, path: str) -> None:
         """Open a video file."""
@@ -112,22 +159,28 @@ class SessionBridge(QObject):
         """Undo the last edit."""
         if self._session.can_undo:
             old_markers = self._session.markers
+            old_edit_spec = self._session.document.edit_spec
             self._session.undo()
             self._suggested_position_ms = currentPositionMs
             self.videoChanged.emit()
             if self._session.markers != old_markers:
                 self.markersChanged.emit()
+            if self._session.document.edit_spec != old_edit_spec:
+                self.editSpecChanged.emit()
 
     @Slot(float)
     def redo(self, currentPositionMs: float = 0) -> None:
         """Redo the last undone edit."""
         if self._session.can_redo:
             old_markers = self._session.markers
+            old_edit_spec = self._session.document.edit_spec
             self._session.redo()
             self._suggested_position_ms = currentPositionMs
             self.videoChanged.emit()
             if self._session.markers != old_markers:
                 self.markersChanged.emit()
+            if self._session.document.edit_spec != old_edit_spec:
+                self.editSpecChanged.emit()
 
     @Slot(float, result="QVariant")
     def addMarker(self, time: float) -> dict | None:
@@ -164,6 +217,24 @@ class SessionBridge(QObject):
         self._session.move_marker(marker_id, new_time)
         if self._session.markers != old_markers:
             self.markersChanged.emit()
+
+    @Slot(float, float)
+    def addCut(self, start: float, end: float) -> None:
+        """Add a cut region (non-destructive). Times in seconds."""
+        if not self._session.has_video:
+            return
+        self._session.add_cut(start, end)
+        self.editSpecChanged.emit()
+        self.videoChanged.emit()  # For canUndo/canRedo bindings
+
+    @Slot(int, int, int, int)
+    def setCrop(self, x: int, y: int, width: int, height: int) -> None:
+        """Set crop region (non-destructive). Coordinates in source pixels."""
+        if not self._session.has_video:
+            return
+        self._session.set_crop(x, y, width, height)
+        self.editSpecChanged.emit()
+        self.videoChanged.emit()  # For canUndo/canRedo bindings
 
     @Slot(int, int, int, int, float)
     def applyCrop(

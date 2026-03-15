@@ -564,3 +564,143 @@ class TestBridgeSuggestedPosition:
         bridge.redo(500)  # currentPositionMs=500
 
         assert bridge.suggestedPositionMs == 500
+
+
+class TestEditSpecBridge:
+    """Tests for non-destructive EditSpec operations via bridge."""
+
+    def test_add_cut_updates_cut_regions(self, test_video: Path):
+        """addCut slot adds cut to EditSpec and exposes via cutRegions."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        bridge.addCut(1.0, 2.0)
+
+        assert len(bridge.cutRegions) == 1
+        assert bridge.cutRegions[0]["start"] == 1000  # milliseconds
+        assert bridge.cutRegions[0]["end"] == 2000
+
+    def test_add_cut_emits_edit_spec_changed(self, test_video: Path, qtbot):
+        """addCut emits editSpecChanged signal."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        with qtbot.waitSignal(bridge.editSpecChanged, timeout=100):
+            bridge.addCut(1.0, 2.0)
+
+    def test_set_crop_updates_crop_rect(self, test_video: Path):
+        """setCrop slot sets crop and exposes via cropRect."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        bridge.setCrop(10, 20, 100, 80)
+
+        crop = bridge.cropRect
+        assert crop["x"] == 10
+        assert crop["y"] == 20
+        assert crop["width"] == 100
+        assert crop["height"] == 80
+
+    def test_set_crop_emits_edit_spec_changed(self, test_video: Path, qtbot):
+        """setCrop emits editSpecChanged signal."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        with qtbot.waitSignal(bridge.editSpecChanged, timeout=100):
+            bridge.setCrop(10, 20, 100, 80)
+
+    def test_effective_duration_reflects_cuts(self, test_video: Path):
+        """effectiveDurationMs accounts for cuts."""
+        session = EditorSession()
+        session.load(test_video)  # 2 second video
+        bridge = make_bridge(session)
+
+        bridge.addCut(0.5, 1.0)  # Remove 0.5 seconds
+
+        # 2.0 - 0.5 = 1.5 seconds = 1500ms
+        assert bridge.effectiveDurationMs == 1500
+
+    def test_source_to_effective_conversion(self, test_video: Path):
+        """sourceToEffective converts times correctly."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+        bridge.addCut(0.5, 1.0)  # Cut 0.5-1.0s (in seconds)
+
+        # Source 1500ms (after cut) -> Effective 1000ms
+        assert bridge.sourceToEffective(1500) == 1000
+
+    def test_effective_to_source_conversion(self, test_video: Path):
+        """effectiveToSource converts times correctly."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+        bridge.addCut(0.5, 1.0)  # Cut 0.5-1.0s (in seconds)
+
+        # Effective 750ms -> Source 1250ms
+        assert bridge.effectiveToSource(750) == 1250
+
+    def test_crop_rect_none_when_no_crop(self, test_video: Path):
+        """cropRect returns None when no crop set."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        assert bridge.cropRect is None
+
+    def test_cut_regions_empty_when_no_cuts(self, test_video: Path):
+        """cutRegions returns empty list when no cuts."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        assert bridge.cutRegions == []
+
+    def test_has_cuts_property(self, test_video: Path):
+        """hasCuts property reflects whether cuts exist."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        assert bridge.hasCuts is False
+
+        bridge.addCut(1.0, 2.0)
+
+        assert bridge.hasCuts is True
+
+    def test_has_crop_property(self, test_video: Path):
+        """hasCrop property reflects whether crop is set."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        assert bridge.hasCrop is False
+
+        bridge.setCrop(10, 20, 100, 80)
+
+        assert bridge.hasCrop is True
+
+    def test_undo_emits_edit_spec_changed(self, test_video: Path, qtbot):
+        """Undo emits editSpecChanged when edit spec changes."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+        bridge.addCut(1.0, 2.0)
+
+        with qtbot.waitSignal(bridge.editSpecChanged, timeout=100):
+            bridge.undo(0)
+
+    def test_redo_emits_edit_spec_changed(self, test_video: Path, qtbot):
+        """Redo emits editSpecChanged when edit spec changes."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+        bridge.addCut(1.0, 2.0)
+        bridge.undo(0)
+
+        with qtbot.waitSignal(bridge.editSpecChanged, timeout=100):
+            bridge.redo(0)

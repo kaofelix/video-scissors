@@ -1,23 +1,11 @@
 """Editor session model - core editing state container."""
 
-import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import av
 
-
-@dataclass(frozen=True)
-class Marker:
-    """A cut marker with stable identity."""
-
-    id: str
-    time: float  # seconds
-
-    @staticmethod
-    def create(time: float) -> "Marker":
-        """Create a new marker with a generated ID."""
-        return Marker(id=uuid.uuid4().hex, time=time)
+from video_scissors.document import Document, EditSpec, Marker, effective_duration
 
 
 @dataclass(frozen=True)
@@ -35,7 +23,7 @@ class SessionSnapshot:
     """Complete session state snapshot for undo/redo."""
 
     video: WorkingVideoState
-    markers: tuple[Marker, ...] = field(default_factory=tuple)
+    document: Document = field(default_factory=Document)
 
 
 class EditorSession:
@@ -110,11 +98,38 @@ class EditorSession:
         return len(self._redo_stack) > 0
 
     @property
+    def document(self) -> Document:
+        """Current document (edit_spec + markers)."""
+        if self._current is None:
+            return Document()
+        return self._current.document
+
+    @property
     def markers(self) -> tuple[Marker, ...]:
         """Cut markers as sorted tuple by time."""
-        if self._current is None:
-            return ()
-        return self._current.markers
+        return self.document.markers
+
+    @property
+    def source_duration(self) -> float:
+        """Duration of source video in seconds."""
+        if self._source_video is None:
+            return 0.0
+        return self._get_video_duration(self._source_video)
+
+    @property
+    def effective_duration(self) -> float:
+        """Duration after cuts applied, in seconds."""
+        return effective_duration(self.source_duration, self.document.edit_spec)
+
+    def _get_video_duration(self, path: Path) -> float:
+        """Get duration of a video file in seconds."""
+        try:
+            container = av.open(str(path))
+            duration = float(container.duration) / av.time_base if container.duration else 0.0
+            container.close()
+            return duration
+        except Exception:
+            return 0.0
 
     def load(self, path: Path) -> None:
         """Load a video file, setting it as both source and working."""
@@ -122,7 +137,7 @@ class EditorSession:
         self._undo_stack.clear()
         self._redo_stack.clear()
         video_state = self._build_working_state(path)
-        self._current = SessionSnapshot(video=video_state, markers=())
+        self._current = SessionSnapshot(video=video_state, document=Document())
         self._bump_working_video_revision()
 
     def _build_working_state(self, path: Path) -> WorkingVideoState:
@@ -158,10 +173,40 @@ class EditorSession:
         """Update the working video path after an edit."""
         self._push_undo()
         video_state = self._build_working_state(path)
-        # Preserve current markers when video changes
-        current_markers = self._current.markers if self._current else ()
-        self._current = SessionSnapshot(video=video_state, markers=current_markers)
+        # Preserve current document when video changes
+        current_document = self._current.document if self._current else Document()
+        self._current = SessionSnapshot(video=video_state, document=current_document)
         self._bump_working_video_revision()
+
+    def add_cut(self, start: float, end: float) -> None:
+        """Add a cut region (non-destructive). Times in source coordinates."""
+        if self._current is None:
+            return
+        self._push_undo()
+        new_edit_spec = self._current.document.edit_spec.with_cut(start, end)
+        new_document = Document(
+            edit_spec=new_edit_spec,
+            markers=self._current.document.markers,
+        )
+        self._current = SessionSnapshot(
+            video=self._current.video,
+            document=new_document,
+        )
+
+    def set_crop(self, x: int, y: int, width: int, height: int) -> None:
+        """Set crop region (non-destructive). Coordinates in source pixels."""
+        if self._current is None:
+            return
+        self._push_undo()
+        new_edit_spec = self._current.document.edit_spec.with_crop(x, y, width, height)
+        new_document = Document(
+            edit_spec=new_edit_spec,
+            markers=self._current.document.markers,
+        )
+        self._current = SessionSnapshot(
+            video=self._current.video,
+            document=new_document,
+        )
 
     def add_marker(self, time: float) -> Marker | None:
         """Add a cut marker at the specified time in seconds.
@@ -171,44 +216,74 @@ class EditorSession:
         if self._current is None:
             return None
         # Check for duplicate time
-        if any(m.time == time for m in self._current.markers):
+        if any(m.time == time for m in self._current.document.markers):
             return None
         self._push_undo()
         marker = Marker.create(time)
-        new_markers = tuple(sorted(self._current.markers + (marker,), key=lambda m: m.time))
-        self._current = SessionSnapshot(video=self._current.video, markers=new_markers)
+        new_markers = tuple(
+            sorted(self._current.document.markers + (marker,), key=lambda m: m.time)
+        )
+        new_document = Document(
+            edit_spec=self._current.document.edit_spec,
+            markers=new_markers,
+        )
+        self._current = SessionSnapshot(
+            video=self._current.video,
+            document=new_document,
+        )
         return marker
 
     def remove_marker(self, marker_id: str) -> None:
         """Remove a cut marker by its ID."""
         if self._current is None:
             return
-        if not any(m.id == marker_id for m in self._current.markers):
+        if not any(m.id == marker_id for m in self._current.document.markers):
             return
         self._push_undo()
-        new_markers = tuple(m for m in self._current.markers if m.id != marker_id)
-        self._current = SessionSnapshot(video=self._current.video, markers=new_markers)
+        new_markers = tuple(m for m in self._current.document.markers if m.id != marker_id)
+        new_document = Document(
+            edit_spec=self._current.document.edit_spec,
+            markers=new_markers,
+        )
+        self._current = SessionSnapshot(
+            video=self._current.video,
+            document=new_document,
+        )
 
     def clear_markers(self) -> None:
         """Remove all cut markers."""
-        if self._current is None or not self._current.markers:
+        if self._current is None or not self._current.document.markers:
             return
         self._push_undo()
-        self._current = SessionSnapshot(video=self._current.video, markers=())
+        new_document = Document(
+            edit_spec=self._current.document.edit_spec,
+            markers=(),
+        )
+        self._current = SessionSnapshot(
+            video=self._current.video,
+            document=new_document,
+        )
 
     def move_marker(self, marker_id: str, new_time: float) -> None:
         """Move a marker to a new time by its ID."""
         if self._current is None:
             return
-        if not any(m.id == marker_id for m in self._current.markers):
+        if not any(m.id == marker_id for m in self._current.document.markers):
             return
         self._push_undo()
         updated = (
             Marker(id=m.id, time=new_time) if m.id == marker_id else m
-            for m in self._current.markers
+            for m in self._current.document.markers
         )
         new_markers = tuple(sorted(updated, key=lambda m: m.time))
-        self._current = SessionSnapshot(video=self._current.video, markers=new_markers)
+        new_document = Document(
+            edit_spec=self._current.document.edit_spec,
+            markers=new_markers,
+        )
+        self._current = SessionSnapshot(
+            video=self._current.video,
+            document=new_document,
+        )
 
     def apply_cut(self, start: float, end: float, output_path: Path) -> None:
         """Apply a cut and adjust markers accordingly.
@@ -228,7 +303,7 @@ class EditorSession:
         cut_duration = end - start
         adjusted_markers: list[Marker] = []
 
-        for marker in self._current.markers:
+        for marker in self._current.document.markers:
             if marker.time < start:
                 # Before cut: unchanged
                 adjusted_markers.append(marker)
@@ -239,7 +314,15 @@ class EditorSession:
 
         self._push_undo()
         video_state = self._build_working_state(output_path)
-        self._current = SessionSnapshot(video=video_state, markers=tuple(adjusted_markers))
+        current_edit_spec = self._current.document.edit_spec if self._current else EditSpec()
+        new_document = Document(
+            edit_spec=current_edit_spec,
+            markers=tuple(adjusted_markers),
+        )
+        self._current = SessionSnapshot(
+            video=video_state,
+            document=new_document,
+        )
         self._bump_working_video_revision()
 
     def undo(self) -> None:
