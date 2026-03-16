@@ -93,7 +93,7 @@ ApplicationWindow {
             }
 
             onSegmentCut: function(startSeconds, endSeconds) {
-                session.applyCut(startSeconds, endSeconds, videoArea.position)
+                session.addCut(startSeconds, endSeconds)
             }
 
             Connections {

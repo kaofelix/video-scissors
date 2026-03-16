@@ -139,6 +139,23 @@ Item {
                 }
             }
         }
+
+        // Cut region overlays (red tint to show removed sections)
+        Repeater {
+            model: session.cutRegions
+
+            Rectangle {
+                property real startPos: root.duration > 0 ? (modelData.start / root.duration) * track.width : 0
+                property real endPos: root.duration > 0 ? (modelData.end / root.duration) * track.width : 0
+
+                x: startPos
+                width: Math.max(0, endPos - startPos)
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                color: "#cc3333"
+                opacity: 0.5
+            }
+        }
     }
 
     // Playhead indicator

@@ -5,7 +5,17 @@ from pathlib import Path
 
 import av
 
-from video_scissors.document import Document, EditSpec, Marker, effective_duration
+from video_scissors.commands import (
+    AddCutCommand,
+    AddMarkerCommand,
+    ClearMarkersCommand,
+    Command,
+    MoveMarkerCommand,
+    RemoveMarkerCommand,
+    SetCropCommand,
+    SnapshotCommand,
+)
+from video_scissors.document import Document, Marker, effective_duration
 
 
 @dataclass(frozen=True)
@@ -40,9 +50,10 @@ class EditorSession:
     def __init__(self) -> None:
         self._source_video: Path | None = None
         self._current: SessionSnapshot | None = None
-        self._undo_stack: list[SessionSnapshot] = []
-        self._redo_stack: list[SessionSnapshot] = []
+        self._undo_stack: list[Command] = []
+        self._redo_stack: list[Command] = []
         self._working_video_revision: int = 0
+        self._last_command: Command | None = None
 
     @property
     def source_video(self) -> Path | None:
@@ -96,6 +107,11 @@ class EditorSession:
     def can_redo(self) -> bool:
         """True if there are undone edits that can be redone."""
         return len(self._redo_stack) > 0
+
+    @property
+    def last_command(self) -> "Command | None":
+        """Most recently executed command (for signal emission decisions)."""
+        return self._last_command
 
     @property
     def document(self) -> Document:
@@ -163,50 +179,48 @@ class EditorSession:
         """Advance the working-video revision after a state change."""
         self._working_video_revision += 1
 
-    def _push_undo(self) -> None:
-        """Push current state to undo stack and clear redo."""
-        if self._current is not None:
-            self._undo_stack.append(self._current)
+    def execute(self, command: "Command") -> None:
+        """Execute a command and push it to the undo stack."""
+        if self._current is None:
+            return
+        new_document = command.execute(self._current.document)
+        self._current = SessionSnapshot(
+            video=self._current.video,
+            document=new_document,
+        )
+        self._undo_stack.append(command)
         self._redo_stack.clear()
+        self._last_command = command
 
     def set_working_video(self, path: Path) -> None:
         """Update the working video path after an edit."""
-        self._push_undo()
+        if self._current is None:
+            return
+        previous_snapshot = self._current
         video_state = self._build_working_state(path)
         # Preserve current document when video changes
-        current_document = self._current.document if self._current else Document()
-        self._current = SessionSnapshot(video=video_state, document=current_document)
+        new_snapshot = SessionSnapshot(video=video_state, document=self._current.document)
+        self._current = new_snapshot
+        # Create snapshot command for undo
+        cmd = SnapshotCommand(previous_snapshot=previous_snapshot, new_snapshot=new_snapshot)
+        self._undo_stack.append(cmd)
+        self._redo_stack.clear()
+        self._last_command = cmd
         self._bump_working_video_revision()
 
     def add_cut(self, start: float, end: float) -> None:
         """Add a cut region (non-destructive). Times in source coordinates."""
         if self._current is None:
             return
-        self._push_undo()
-        new_edit_spec = self._current.document.edit_spec.with_cut(start, end)
-        new_document = Document(
-            edit_spec=new_edit_spec,
-            markers=self._current.document.markers,
-        )
-        self._current = SessionSnapshot(
-            video=self._current.video,
-            document=new_document,
-        )
+        self.execute(AddCutCommand(start=start, end=end))
 
     def set_crop(self, x: int, y: int, width: int, height: int) -> None:
         """Set crop region (non-destructive). Coordinates in source pixels."""
         if self._current is None:
             return
-        self._push_undo()
-        new_edit_spec = self._current.document.edit_spec.with_crop(x, y, width, height)
-        new_document = Document(
-            edit_spec=new_edit_spec,
-            markers=self._current.document.markers,
-        )
-        self._current = SessionSnapshot(
-            video=self._current.video,
-            document=new_document,
-        )
+        previous_crop = self._current.document.edit_spec.crop
+        cmd = SetCropCommand(x=x, y=y, width=width, height=height, previous_crop=previous_crop)
+        self.execute(cmd)
 
     def add_marker(self, time: float) -> Marker | None:
         """Add a cut marker at the specified time in seconds.
@@ -218,72 +232,35 @@ class EditorSession:
         # Check for duplicate time
         if any(m.time == time for m in self._current.document.markers):
             return None
-        self._push_undo()
         marker = Marker.create(time)
-        new_markers = tuple(
-            sorted(self._current.document.markers + (marker,), key=lambda m: m.time)
-        )
-        new_document = Document(
-            edit_spec=self._current.document.edit_spec,
-            markers=new_markers,
-        )
-        self._current = SessionSnapshot(
-            video=self._current.video,
-            document=new_document,
-        )
+        self.execute(AddMarkerCommand(marker=marker))
         return marker
 
     def remove_marker(self, marker_id: str) -> None:
         """Remove a cut marker by its ID."""
         if self._current is None:
             return
-        if not any(m.id == marker_id for m in self._current.document.markers):
+        marker = next((m for m in self._current.document.markers if m.id == marker_id), None)
+        if marker is None:
             return
-        self._push_undo()
-        new_markers = tuple(m for m in self._current.document.markers if m.id != marker_id)
-        new_document = Document(
-            edit_spec=self._current.document.edit_spec,
-            markers=new_markers,
-        )
-        self._current = SessionSnapshot(
-            video=self._current.video,
-            document=new_document,
-        )
+        self.execute(RemoveMarkerCommand(marker=marker))
 
     def clear_markers(self) -> None:
         """Remove all cut markers."""
         if self._current is None or not self._current.document.markers:
             return
-        self._push_undo()
-        new_document = Document(
-            edit_spec=self._current.document.edit_spec,
-            markers=(),
-        )
-        self._current = SessionSnapshot(
-            video=self._current.video,
-            document=new_document,
-        )
+        markers = self._current.document.markers
+        self.execute(ClearMarkersCommand(markers=markers))
 
     def move_marker(self, marker_id: str, new_time: float) -> None:
         """Move a marker to a new time by its ID."""
         if self._current is None:
             return
-        if not any(m.id == marker_id for m in self._current.document.markers):
+        marker = next((m for m in self._current.document.markers if m.id == marker_id), None)
+        if marker is None:
             return
-        self._push_undo()
-        updated = (
-            Marker(id=m.id, time=new_time) if m.id == marker_id else m
-            for m in self._current.document.markers
-        )
-        new_markers = tuple(sorted(updated, key=lambda m: m.time))
-        new_document = Document(
-            edit_spec=self._current.document.edit_spec,
-            markers=new_markers,
-        )
-        self._current = SessionSnapshot(
-            video=self._current.video,
-            document=new_document,
-        )
+        cmd = MoveMarkerCommand(marker_id=marker_id, old_time=marker.time, new_time=new_time)
+        self.execute(cmd)
 
     def apply_cut(self, start: float, end: float, output_path: Path) -> None:
         """Apply a cut and adjust markers accordingly.
@@ -300,6 +277,7 @@ class EditorSession:
         if self._current is None:
             return
 
+        previous_snapshot = self._current
         cut_duration = end - start
         adjusted_markers: list[Marker] = []
 
@@ -312,34 +290,65 @@ class EditorSession:
                 adjusted_markers.append(Marker(id=marker.id, time=marker.time - cut_duration))
             # Inside cut [start, end): removed (not added)
 
-        self._push_undo()
         video_state = self._build_working_state(output_path)
-        current_edit_spec = self._current.document.edit_spec if self._current else EditSpec()
+        current_edit_spec = self._current.document.edit_spec
         new_document = Document(
             edit_spec=current_edit_spec,
             markers=tuple(adjusted_markers),
         )
-        self._current = SessionSnapshot(
+        new_snapshot = SessionSnapshot(
             video=video_state,
             document=new_document,
         )
+        self._current = new_snapshot
+        # Create snapshot command for undo
+        cmd = SnapshotCommand(previous_snapshot=previous_snapshot, new_snapshot=new_snapshot)
+        self._undo_stack.append(cmd)
+        self._redo_stack.clear()
+        self._last_command = cmd
         self._bump_working_video_revision()
 
     def undo(self) -> None:
         """Undo the last edit, restoring the previous state."""
         if not self.can_undo or self._current is None:
             return
-        self._redo_stack.append(self._current)
-        self._current = self._undo_stack.pop()
-        self._bump_working_video_revision()
+        cmd = self._undo_stack.pop()
+
+        if isinstance(cmd, SnapshotCommand):
+            # Legacy: restore entire snapshot (for working video changes)
+            self._current = cmd.previous_snapshot
+            self._bump_working_video_revision()
+        else:
+            # Document-only command
+            new_document = cmd.undo(self._current.document)
+            self._current = SessionSnapshot(
+                video=self._current.video,
+                document=new_document,
+            )
+
+        self._redo_stack.append(cmd)
+        self._last_command = None
 
     def redo(self) -> None:
         """Redo the last undone edit."""
         if not self.can_redo or self._current is None:
             return
-        self._undo_stack.append(self._current)
-        self._current = self._redo_stack.pop()
-        self._bump_working_video_revision()
+        cmd = self._redo_stack.pop()
+
+        if isinstance(cmd, SnapshotCommand):
+            # Legacy: restore entire snapshot (for working video changes)
+            self._current = cmd.new_snapshot
+            self._bump_working_video_revision()
+        else:
+            # Document-only command
+            new_document = cmd.execute(self._current.document)
+            self._current = SessionSnapshot(
+                video=self._current.video,
+                document=new_document,
+            )
+
+        self._undo_stack.append(cmd)
+        self._last_command = cmd
 
     def close(self) -> None:
         """Close the session, clearing all state."""

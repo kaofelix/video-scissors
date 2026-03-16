@@ -196,6 +196,45 @@ Item {
                     }
                 }
             }
+
+            // Cut region overlays (red hatching to show removed sections)
+            // These are non-interactive visual indicators
+            Repeater {
+                model: session.cutRegions
+
+                Rectangle {
+                    id: cutRegionRect
+                    property real startPos: root.duration > 0 ? (modelData.start / root.duration) * track.width : 0
+                    property real endPos: root.duration > 0 ? (modelData.end / root.duration) * track.width : 0
+
+                    x: startPos
+                    width: Math.max(0, endPos - startPos)
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    color: "#cc3333"
+                    opacity: 0.7
+
+                    // Diagonal hatching pattern
+                    Canvas {
+                        id: hatchCanvas
+                        anchors.fill: parent
+
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            ctx.clearRect(0, 0, width, height)
+                            ctx.strokeStyle = "#440000"
+                            ctx.lineWidth = 2
+                            var step = 6
+                            for (var i = -height; i < width + height; i += step) {
+                                ctx.beginPath()
+                                ctx.moveTo(i, 0)
+                                ctx.lineTo(i + height, height)
+                                ctx.stroke()
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Marker lines and handles

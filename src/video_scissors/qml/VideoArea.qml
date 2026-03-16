@@ -22,6 +22,19 @@ Rectangle {
         fillMode: VideoOutput.PreserveAspectFit
         source: session.workingVideoUrl
 
+        // Auto-skip cut regions during playback
+        onPositionChanged: {
+            var cutRegions = session.cutRegions
+            for (var i = 0; i < cutRegions.length; i++) {
+                var cut = cutRegions[i]
+                // If inside a cut region, skip to end of cut
+                if (position >= cut.start && position < cut.end) {
+                    videoPlayer.position = cut.end
+                    break
+                }
+            }
+        }
+
         // Reload when working video changes
         Connections {
             target: session
@@ -54,7 +67,7 @@ Rectangle {
         videoRevision: session.workingVideoRevision
 
         onCropApplied: function(x, y, width, height) {
-            session.applyCrop(x, y, width, height, videoPlayer.position)
+            session.setCrop(x, y, width, height)
             clear()
         }
 
