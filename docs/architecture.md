@@ -81,7 +81,7 @@ For example:
 
 - `EditorSession` should own session state and history
 - backend services should own media work
-- `SessionBridge` should adapt and delegate for QML
+- `EditorSession` exposes domain state to QML via per-property notify signals
 - application/bootstrap code should compose concrete services and workspaces
 
 ### 6. Keep the QML/backend boundary narrow
@@ -103,7 +103,7 @@ As new editing features are added, preserve the current split and resist conveni
 
 - Keep backend state in Python and direct interaction in QML.
 - Prefer explicit state and strategic change signals over scattered imperative UI cleanup.
-- Keep `SessionBridge` as an adapter/delegator, not a composition root or feature manager.
+- Keep `EditorSession` focused on state and delegation, not on feature management.
 - Prefer explicit domain objects over parallel primitive fields when a concept becomes important.
 - Keep feature state in its natural domain coordinate system, then transform it for display.
 - Do not build a grand generic edit framework before multiple features prove what is truly shared.

@@ -200,7 +200,7 @@ Item {
             // Cut region overlays (red hatching to show removed sections)
             // These are non-interactive visual indicators
             Repeater {
-                model: session.cutRegions
+                model: session.document.editSpec.cutRegions
 
                 Rectangle {
                     id: cutRegionRect

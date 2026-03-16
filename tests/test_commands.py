@@ -33,9 +33,9 @@ class TestAddCutCommand:
 
         cmd.redo()
 
-        assert len(session_with_video.document.edit_spec.cuts) == 1
-        assert session_with_video.document.edit_spec.cuts[0].start == 1.0
-        assert session_with_video.document.edit_spec.cuts[0].end == 2.0
+        assert len(session_with_video._raw_document.edit_spec.cuts) == 1
+        assert session_with_video._raw_document.edit_spec.cuts[0].start == 1.0
+        assert session_with_video._raw_document.edit_spec.cuts[0].end == 2.0
 
     def test_redo_preserves_markers(self, session_with_video: EditorSession):
         """Redo preserves existing markers."""
@@ -54,7 +54,7 @@ class TestAddCutCommand:
 
         cmd.undo()
 
-        assert session_with_video.document.edit_spec.cuts == ()
+        assert session_with_video._raw_document.edit_spec.cuts == ()
 
     def test_undo_preserves_other_cuts(self, session_with_video: EditorSession):
         """Undo only removes the specific cut added by this command."""
@@ -67,8 +67,8 @@ class TestAddCutCommand:
         cmd.undo()
 
         # Only the pre-existing cut remains
-        assert len(session_with_video.document.edit_spec.cuts) == 1
-        assert session_with_video.document.edit_spec.cuts[0].start == 3.0
+        assert len(session_with_video._raw_document.edit_spec.cuts) == 1
+        assert session_with_video._raw_document.edit_spec.cuts[0].start == 3.0
 
     def test_command_text(self, session_with_video: EditorSession):
         """Command has descriptive text."""
@@ -87,7 +87,7 @@ class TestSetCropCommand:
 
         cmd.redo()
 
-        assert session_with_video.document.edit_spec.crop == CropRect(10, 20, 100, 80)
+        assert session_with_video._raw_document.edit_spec.crop == CropRect(10, 20, 100, 80)
 
     def test_redo_replaces_existing_crop(self, session_with_video: EditorSession):
         """Redo replaces any existing crop."""
@@ -97,7 +97,7 @@ class TestSetCropCommand:
         cmd = SetCropCommand(session_with_video, x=10, y=20, width=100, height=80)
         cmd.redo()
 
-        assert session_with_video.document.edit_spec.crop == CropRect(10, 20, 100, 80)
+        assert session_with_video._raw_document.edit_spec.crop == CropRect(10, 20, 100, 80)
 
     def test_undo_restores_previous_crop(self, session_with_video: EditorSession):
         """Undo restores the previous crop."""
@@ -108,7 +108,7 @@ class TestSetCropCommand:
         cmd.redo()
         cmd.undo()
 
-        assert session_with_video.document.edit_spec.crop == CropRect(0, 0, 50, 50)
+        assert session_with_video._raw_document.edit_spec.crop == CropRect(0, 0, 50, 50)
 
     def test_undo_removes_crop_when_no_previous(self, session_with_video: EditorSession):
         """Undo removes crop when there was no previous crop."""
@@ -117,7 +117,7 @@ class TestSetCropCommand:
 
         cmd.undo()
 
-        assert session_with_video.document.edit_spec.crop is None
+        assert session_with_video._raw_document.edit_spec.crop is None
 
     def test_command_text(self, session_with_video: EditorSession):
         """Command has descriptive text."""
@@ -322,7 +322,7 @@ class TestSessionWithQUndoStack:
         session_with_video.add_cut(1.0, 2.0)
 
         assert session_with_video.undo_stack.canUndo()
-        assert len(session_with_video.document.edit_spec.cuts) == 1
+        assert len(session_with_video._raw_document.edit_spec.cuts) == 1
 
     def test_undo_via_session_uses_undo_stack(self, session_with_video: EditorSession):
         """session.undo() uses QUndoStack for QUndoCommand commands."""
@@ -330,7 +330,7 @@ class TestSessionWithQUndoStack:
 
         session_with_video.undo()
 
-        assert session_with_video.document.edit_spec.cuts == ()
+        assert session_with_video._raw_document.edit_spec.cuts == ()
 
     def test_redo_via_session_uses_undo_stack(self, session_with_video: EditorSession):
         """session.redo() uses QUndoStack for QUndoCommand commands."""
@@ -339,7 +339,7 @@ class TestSessionWithQUndoStack:
 
         session_with_video.redo()
 
-        assert len(session_with_video.document.edit_spec.cuts) == 1
+        assert len(session_with_video._raw_document.edit_spec.cuts) == 1
 
     def test_multiple_commands_undo_in_order(self, session_with_video: EditorSession):
         """Multiple commands can be undone in reverse order."""
@@ -347,18 +347,18 @@ class TestSessionWithQUndoStack:
         session_with_video.add_cut(3.0, 4.0)
 
         session_with_video.undo()
-        assert len(session_with_video.document.edit_spec.cuts) == 1
-        assert session_with_video.document.edit_spec.cuts[0].start == 1.0
+        assert len(session_with_video._raw_document.edit_spec.cuts) == 1
+        assert session_with_video._raw_document.edit_spec.cuts[0].start == 1.0
 
         session_with_video.undo()
-        assert session_with_video.document.edit_spec.cuts == ()
+        assert session_with_video._raw_document.edit_spec.cuts == ()
 
     def test_set_crop_uses_undo_stack(self, session_with_video: EditorSession):
         """set_crop pushes to QUndoStack."""
         session_with_video.set_crop(10, 20, 100, 80)
 
         assert session_with_video.undo_stack.canUndo()
-        assert session_with_video.document.edit_spec.crop == CropRect(10, 20, 100, 80)
+        assert session_with_video._raw_document.edit_spec.crop == CropRect(10, 20, 100, 80)
 
     def test_add_marker_uses_undo_stack(self, session_with_video: EditorSession):
         """add_marker pushes to QUndoStack."""

@@ -8,8 +8,7 @@ from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
-from video_scissors.bootstrap import create_session_bridge
-from video_scissors.session import EditorSession
+from video_scissors.bootstrap import create_session
 
 
 def main() -> int:
@@ -22,15 +21,14 @@ def main() -> int:
     app.setApplicationName("Video Scissors")
     app.setOrganizationName("VideoScissors")
 
-    # Create session and bridge
-    session = EditorSession()
-    bridge = create_session_bridge(session)
+    # Create session with services
+    session = create_session()
 
     # Load QML
     engine = QQmlApplicationEngine()
 
-    # Expose bridge to QML as 'session'
-    engine.rootContext().setContextProperty("session", bridge)
+    # Expose session to QML directly (no bridge layer)
+    engine.rootContext().setContextProperty("session", session)
 
     qml_file = Path(__file__).parent / "qml" / "Main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_file)))
@@ -43,7 +41,7 @@ def main() -> int:
         file_path = Path(args.file).resolve()
         if file_path.exists():
             # Use QTimer to open after event loop starts
-            QTimer.singleShot(0, lambda: bridge.openFile(str(file_path)))
+            QTimer.singleShot(0, lambda: session.openFile(str(file_path)))
 
     return app.exec()
 

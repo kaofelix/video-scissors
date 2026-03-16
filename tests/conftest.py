@@ -15,8 +15,7 @@ from PySide6.QtCore import QCoreApplication, QEventLoop, QUrl  # noqa: E402
 from PySide6.QtGui import QGuiApplication  # noqa: E402
 from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
 
-from video_scissors.bootstrap import create_session_bridge  # noqa: E402
-from video_scissors.session import EditorSession  # noqa: E402
+from video_scissors.bootstrap import create_session  # noqa: E402
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SCREENSHOTS_DIR = Path(__file__).parent / "screenshots"
@@ -43,13 +42,12 @@ def app_window(qtbot):
     # Set Qt Quick Controls style for consistent rendering
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Fusion")
 
-    # Create session and bridge
-    session = EditorSession()
-    bridge = create_session_bridge(session)
+    # Create session with services
+    session = create_session()
 
     # Create engine and load QML
     engine = QQmlApplicationEngine()
-    engine.rootContext().setContextProperty("session", bridge)
+    engine.rootContext().setContextProperty("session", session)
 
     qml_file = Path(__file__).parent.parent / "src" / "video_scissors" / "qml" / "Main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_file)))
@@ -66,7 +64,6 @@ def app_window(qtbot):
     # Keep references alive
     window._engine = engine
     window._session = session
-    window._bridge = bridge
 
     yield window
 

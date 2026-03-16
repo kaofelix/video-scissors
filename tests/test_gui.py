@@ -28,7 +28,7 @@ class TestCropPreview:
 
     def test_no_crop_shows_full_video(self, app_window, qtbot, test_video):
         """Without a crop, the video clip container is not active."""
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(200)
 
         video_area = app_window.findChild(QObject, "videoArea")
@@ -37,11 +37,11 @@ class TestCropPreview:
 
     def test_crop_activates_clip_preview(self, app_window, qtbot, test_video):
         """After applying a crop, the video area shows clipped preview."""
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(200)
 
         # Apply a crop via bridge (non-destructive)
-        app_window._bridge.setCrop(40, 30, 200, 150)
+        app_window._session.setCrop(40, 30, 200, 150)
         qtbot.wait(100)
 
         video_area = app_window.findChild(QObject, "videoArea")
@@ -50,28 +50,28 @@ class TestCropPreview:
 
     def test_undo_crop_returns_to_full_frame(self, app_window, qtbot, test_video):
         """Undoing a crop returns the video to full-frame display."""
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(200)
 
         # Apply crop then undo
-        app_window._bridge.setCrop(40, 30, 200, 150)
+        app_window._session.setCrop(40, 30, 200, 150)
         qtbot.wait(100)
 
         video_area = app_window.findChild(QObject, "videoArea")
         assert video_area.property("cropActive") is True
 
-        app_window._bridge.undo()
+        app_window._session.undo()
         qtbot.wait(100)
 
         assert video_area.property("cropActive") is False
 
     def test_crop_overlay_visible_when_crop_active(self, app_window, qtbot, test_video):
         """CropOverlay remains visible and interactive when a crop is applied."""
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(200)
 
         # Apply crop
-        app_window._bridge.setCrop(40, 30, 200, 150)
+        app_window._session.setCrop(40, 30, 200, 150)
         qtbot.wait(100)
 
         crop_overlay = app_window.findChild(QObject, "cropOverlay")
@@ -82,7 +82,7 @@ class TestCropPreview:
         self, app_window, qtbot, test_video
     ):
         """When a crop is active, overlay works in cropped video dimensions."""
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(200)
 
         crop_overlay = app_window.findChild(QObject, "cropOverlay")
@@ -93,7 +93,7 @@ class TestCropPreview:
         assert crop_overlay.property("videoHeight") == 240
 
         # Apply crop
-        app_window._bridge.setCrop(40, 30, 200, 150)
+        app_window._session.setCrop(40, 30, 200, 150)
         qtbot.wait(100)
 
         # After crop: overlay uses crop dimensions
@@ -102,11 +102,11 @@ class TestCropPreview:
 
     def test_stacked_crop_translates_to_source_coordinates(self, app_window, qtbot, test_video):
         """Drawing a crop on a cropped view produces correct source coordinates."""
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(200)
 
         # First crop: (40, 30, 200, 150) in source coords
-        app_window._bridge.setCrop(40, 30, 200, 150)
+        app_window._session.setCrop(40, 30, 200, 150)
         qtbot.wait(100)
 
         # Simulate applying a second crop at (20, 10, 100, 80)
@@ -117,7 +117,7 @@ class TestCropPreview:
         qtbot.wait(100)
 
         # Verify the crop in the EditSpec is in source coordinates
-        crop_rect = app_window._bridge.cropRect
+        crop_rect = app_window._session.document.editSpec.cropRect
         assert crop_rect["x"] == 60
         assert crop_rect["y"] == 40
         assert crop_rect["width"] == 100
@@ -125,43 +125,43 @@ class TestCropPreview:
 
     def test_undo_stacked_crop_restores_previous(self, app_window, qtbot, test_video):
         """Undoing a stacked crop restores the previous crop, not full frame."""
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(200)
 
         # First crop
-        app_window._bridge.setCrop(40, 30, 200, 150)
+        app_window._session.setCrop(40, 30, 200, 150)
         qtbot.wait(100)
 
         # Second crop (stacked, in source coords for simplicity)
-        app_window._bridge.setCrop(60, 40, 100, 80)
+        app_window._session.setCrop(60, 40, 100, 80)
         qtbot.wait(100)
 
         # Undo → back to first crop
-        app_window._bridge.undo()
+        app_window._session.undo()
         qtbot.wait(100)
 
         video_area = app_window.findChild(QObject, "videoArea")
         assert video_area.property("cropActive") is True
-        crop_rect = app_window._bridge.cropRect
+        crop_rect = app_window._session.document.editSpec.cropRect
         assert crop_rect["x"] == 40
         assert crop_rect["y"] == 30
         assert crop_rect["width"] == 200
         assert crop_rect["height"] == 150
 
         # Undo again → no crop
-        app_window._bridge.undo()
+        app_window._session.undo()
         qtbot.wait(100)
         assert video_area.property("cropActive") is False
 
     def test_crop_preview_screenshot(self, app_window, qtbot, test_video, capture_screenshot):
         """Visual verification: crop preview clips the video correctly."""
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(200)
 
         capture_screenshot(app_window, "crop_preview_before")
 
         # Apply crop to center region
-        app_window._bridge.setCrop(60, 40, 200, 160)
+        app_window._session.setCrop(60, 40, 200, 160)
         qtbot.wait(100)
 
         capture_screenshot(app_window, "crop_preview_after")
@@ -195,26 +195,26 @@ class TestCropOverlay:
 
     def test_video_ready_for_crop(self, app_window, qtbot, test_video):
         """Video loads and is ready for crop interaction."""
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(100)
 
         # Video should be loaded
-        assert app_window._bridge.hasVideo
+        assert app_window._session.hasVideo
         # Video dimensions should be available (needed for crop coordinate mapping)
-        assert app_window._bridge.videoWidth == 320
-        assert app_window._bridge.videoHeight == 240
+        assert app_window._session.videoWidth == 320
+        assert app_window._session.videoHeight == 240
 
     def test_video_frame_rate_available(self, app_window, qtbot, test_video):
         """Video frame rate is available after loading."""
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(100)
 
         # Test video is generated at 30fps
-        assert app_window._bridge.videoFrameRate == 30.0
+        assert app_window._session.videoFrameRate == 30.0
 
     def test_drag_creates_crop_selection(self, app_window, qtbot, test_video, capture_screenshot):
         """Clicking and dragging on video creates a crop selection."""
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(200)
 
         # Get the video container area (approximate - it's the main content area)
@@ -239,7 +239,7 @@ class TestCropOverlay:
         portrait_video = tmp_path / "portrait.mp4"
         generate_test_video(portrait_video, duration=1.0, width=240, height=320)
 
-        app_window._bridge.openFile(str(portrait_video))
+        app_window._session.openFile(str(portrait_video))
         qtbot.wait(300)
 
         video_player = app_window.findChild(QObject, "videoPlayer")
@@ -263,7 +263,7 @@ class TestCropOverlay:
         portrait_video = tmp_path / "portrait.mp4"
         generate_test_video(portrait_video, duration=1.0, width=240, height=320)
 
-        app_window._bridge.openFile(str(portrait_video))
+        app_window._session.openFile(str(portrait_video))
         qtbot.wait(300)
 
         crop_overlay = app_window.findChild(QObject, "cropOverlay")
@@ -288,7 +288,7 @@ class TestCropOverlay:
         large_video = tmp_path / "large.mp4"
         generate_test_video(large_video, duration=1.0, width=1280, height=720)
 
-        app_window._bridge.openFile(str(large_video))
+        app_window._session.openFile(str(large_video))
         qtbot.wait(300)
 
         crop_overlay = app_window.findChild(QObject, "cropOverlay")
@@ -321,29 +321,29 @@ class TestTimeline:
         # Without a video loaded, interaction should be disabled
         assert app_window.isVisible()
         # Session has no video initially
-        assert not app_window._bridge.hasVideo
+        assert not app_window._session.hasVideo
 
     def test_timeline_enabled_with_video(self, app_window, qtbot, test_video):
         """Timeline is enabled when video is loaded."""
         # Load video
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(100)  # Allow signal processing
 
-        assert app_window._bridge.hasVideo
+        assert app_window._session.hasVideo
 
     def test_timeline_shows_playhead_position(
         self, app_window, qtbot, test_video, capture_screenshot
     ):
         """Timeline displays the current playhead position."""
         # Load video
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(200)  # Allow video to load and timeline to update
 
         # Capture for visual verification
         capture_screenshot(app_window, "timeline_with_video")
 
         # Verify video is loaded (timeline should now show duration)
-        assert app_window._bridge.hasVideo
+        assert app_window._session.hasVideo
 
 
 class TestCutBar:
@@ -351,7 +351,7 @@ class TestCutBar:
 
     def test_timeline_enabled_with_video(self, app_window, qtbot, test_video):
         """Timeline is enabled when video is loaded."""
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(100)
 
         timeline = app_window.findChild(QObject, "timeline")
@@ -360,7 +360,7 @@ class TestCutBar:
 
     def test_timeline_starts_with_no_markers(self, app_window, qtbot, test_video):
         """Timeline starts with empty markers list."""
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(100)
 
         timeline = app_window.findChild(QObject, "timeline")
@@ -370,11 +370,11 @@ class TestCutBar:
 
     def test_markers_sync_with_session(self, app_window, qtbot, test_video):
         """Markers in timeline reflect session state."""
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(100)
 
         # Add marker via bridge
-        app_window._bridge.addMarker(0.5)
+        app_window._session.addMarker(0.5)
         qtbot.wait(50)
 
         timeline = app_window.findChild(QObject, "timeline")
@@ -384,13 +384,13 @@ class TestCutBar:
 
     def test_multiple_markers_displayed(self, app_window, qtbot, test_video, capture_screenshot):
         """Multiple markers are displayed on the timeline."""
-        app_window._bridge.openFile(str(test_video))
+        app_window._session.openFile(str(test_video))
         qtbot.wait(100)
 
         # Add multiple markers
-        app_window._bridge.addMarker(0.3)
-        app_window._bridge.addMarker(0.7)
-        app_window._bridge.addMarker(1.2)
+        app_window._session.addMarker(0.3)
+        app_window._session.addMarker(0.7)
+        app_window._session.addMarker(1.2)
         qtbot.wait(50)
 
         capture_screenshot(app_window, "timeline_with_markers")
@@ -405,8 +405,8 @@ class TestMarkerSelection:
 
     def test_cutbar_starts_with_no_selection(self, app_window, qtbot, test_video):
         """CutBar starts with no marker selected."""
-        app_window._bridge.openFile(str(test_video))
-        app_window._bridge.addMarker(0.5)
+        app_window._session.openFile(str(test_video))
+        app_window._session.addMarker(0.5)
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
@@ -416,8 +416,8 @@ class TestMarkerSelection:
 
     def test_click_marker_selects_it(self, app_window, qtbot, test_video):
         """Clicking on a marker selects it."""
-        app_window._bridge.openFile(str(test_video))
-        marker = app_window._bridge.addMarker(1.0)  # At 50% for a 2-second video
+        app_window._session.openFile(str(test_video))
+        marker = app_window._session.addMarker(1.0)  # At 50% for a 2-second video
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
@@ -438,8 +438,8 @@ class TestMarkerSelection:
 
     def test_click_elsewhere_deselects_marker(self, app_window, qtbot, test_video):
         """Clicking on empty track area deselects the selected marker."""
-        app_window._bridge.openFile(str(test_video))
-        marker = app_window._bridge.addMarker(1.0)
+        app_window._session.openFile(str(test_video))
+        marker = app_window._session.addMarker(1.0)
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
@@ -464,8 +464,8 @@ class TestMarkerSelection:
 
     def test_arrow_key_moves_selected_marker(self, app_window, qtbot, test_video):
         """Arrow keys move the selected marker by small increments."""
-        app_window._bridge.openFile(str(test_video))
-        marker = app_window._bridge.addMarker(1.0)
+        app_window._session.openFile(str(test_video))
+        marker = app_window._session.addMarker(1.0)
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
@@ -480,14 +480,14 @@ class TestMarkerSelection:
         qtbot.wait(50)
 
         # Marker should have moved right (small increment)
-        markers = app_window._bridge.markers
+        markers = app_window._session.document.markers
         assert len(markers) == 1
         assert markers[0]["time"] > 1.0  # Moved right
 
     def test_shift_arrow_moves_by_larger_increment(self, app_window, qtbot, test_video):
         """Shift+Arrow moves marker by larger increment."""
-        app_window._bridge.openFile(str(test_video))
-        marker = app_window._bridge.addMarker(1.0)
+        app_window._session.openFile(str(test_video))
+        marker = app_window._session.addMarker(1.0)
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
@@ -501,15 +501,15 @@ class TestMarkerSelection:
         qtbot.keyClick(app_window, Qt.Key_Right, Qt.ShiftModifier)
         qtbot.wait(50)
 
-        markers = app_window._bridge.markers
+        markers = app_window._session.document.markers
         assert len(markers) == 1
         # Should move more than small increment
         assert markers[0]["time"] > 1.0
 
     def test_delete_key_removes_selected_marker(self, app_window, qtbot, test_video):
         """Delete key removes the selected marker."""
-        app_window._bridge.openFile(str(test_video))
-        marker = app_window._bridge.addMarker(1.0)
+        app_window._session.openFile(str(test_video))
+        marker = app_window._session.addMarker(1.0)
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
@@ -524,13 +524,13 @@ class TestMarkerSelection:
         qtbot.wait(50)
 
         # Marker should be removed
-        markers = app_window._bridge.markers
+        markers = app_window._session.document.markers
         assert len(markers) == 0
 
     def test_backspace_removes_selected_marker(self, app_window, qtbot, test_video):
         """Backspace key removes the selected marker."""
-        app_window._bridge.openFile(str(test_video))
-        marker = app_window._bridge.addMarker(1.0)
+        app_window._session.openFile(str(test_video))
+        marker = app_window._session.addMarker(1.0)
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
@@ -545,14 +545,14 @@ class TestMarkerSelection:
         qtbot.wait(50)
 
         # Marker should be removed
-        markers = app_window._bridge.markers
+        markers = app_window._session.document.markers
         assert len(markers) == 0
 
     def test_only_one_marker_selected_at_a_time(self, app_window, qtbot, test_video):
         """Clicking a different marker deselects the previous one."""
-        app_window._bridge.openFile(str(test_video))
-        marker1 = app_window._bridge.addMarker(0.5)
-        marker2 = app_window._bridge.addMarker(1.5)
+        app_window._session.openFile(str(test_video))
+        marker1 = app_window._session.addMarker(0.5)
+        marker2 = app_window._session.addMarker(1.5)
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
@@ -571,8 +571,8 @@ class TestMarkerSelection:
 
     def test_selection_cleared_when_marker_removed_externally(self, app_window, qtbot, test_video):
         """Selection is cleared when the selected marker is removed via undo or clear."""
-        app_window._bridge.openFile(str(test_video))
-        marker = app_window._bridge.addMarker(1.0)
+        app_window._session.openFile(str(test_video))
+        marker = app_window._session.addMarker(1.0)
         qtbot.wait(100)
 
         cutbar = app_window.findChild(QObject, "cutBar")
@@ -583,7 +583,7 @@ class TestMarkerSelection:
         assert cutbar.property("selectedMarkerId") == marker["id"]
 
         # Remove marker via bridge (simulates undo/clear)
-        app_window._bridge.removeMarker(marker["id"])
+        app_window._session.removeMarker(marker["id"])
         qtbot.wait(50)
 
         # Selection should be cleared

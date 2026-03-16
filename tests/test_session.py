@@ -650,7 +650,7 @@ class TestEditSpecIntegration:
         session = EditorSession()
         session.load(test_video)
 
-        assert session.document.edit_spec == EditSpec()
+        assert session._raw_document.edit_spec == EditSpec()
 
     def test_add_cut_updates_edit_spec(self, test_video: Path):
         """add_cut stores cut in EditSpec (non-destructive)."""
@@ -659,9 +659,9 @@ class TestEditSpecIntegration:
 
         session.add_cut(1.0, 2.0)
 
-        assert len(session.document.edit_spec.cuts) == 1
-        assert session.document.edit_spec.cuts[0].start == 1.0
-        assert session.document.edit_spec.cuts[0].end == 2.0
+        assert len(session._raw_document.edit_spec.cuts) == 1
+        assert session._raw_document.edit_spec.cuts[0].start == 1.0
+        assert session._raw_document.edit_spec.cuts[0].end == 2.0
 
     def test_add_cut_is_instant(self, test_video: Path):
         """add_cut doesn't trigger any encoding (just updates EditSpec)."""
@@ -682,7 +682,7 @@ class TestEditSpecIntegration:
 
         session.undo()
 
-        assert session.document.edit_spec.cuts == ()
+        assert session._raw_document.edit_spec.cuts == ()
 
     def test_add_cut_is_redoable(self, test_video: Path):
         """Undone cut can be redone."""
@@ -693,7 +693,7 @@ class TestEditSpecIntegration:
 
         session.redo()
 
-        assert len(session.document.edit_spec.cuts) == 1
+        assert len(session._raw_document.edit_spec.cuts) == 1
 
     def test_set_crop_updates_edit_spec(self, test_video: Path):
         """set_crop stores crop in EditSpec (non-destructive)."""
@@ -702,9 +702,9 @@ class TestEditSpecIntegration:
 
         session.set_crop(10, 20, 100, 80)
 
-        assert session.document.edit_spec.crop is not None
-        assert session.document.edit_spec.crop.x == 10
-        assert session.document.edit_spec.crop.width == 100
+        assert session._raw_document.edit_spec.crop is not None
+        assert session._raw_document.edit_spec.crop.x == 10
+        assert session._raw_document.edit_spec.crop.width == 100
 
     def test_set_crop_is_undoable(self, test_video: Path):
         """set_crop can be undone."""
@@ -714,7 +714,7 @@ class TestEditSpecIntegration:
 
         session.undo()
 
-        assert session.document.edit_spec.crop is None
+        assert session._raw_document.edit_spec.crop is None
 
     def test_multiple_cuts_accumulate(self, test_video: Path):
         """Multiple cuts accumulate in EditSpec."""
@@ -724,7 +724,7 @@ class TestEditSpecIntegration:
         session.add_cut(1.0, 2.0)
         session.add_cut(4.0, 5.0)
 
-        assert len(session.document.edit_spec.cuts) == 2
+        assert len(session._raw_document.edit_spec.cuts) == 2
 
     def test_edit_spec_reset_on_new_video(self, test_video: Path, tmp_path: Path):
         """Loading a new video resets EditSpec."""
@@ -736,7 +736,7 @@ class TestEditSpecIntegration:
         new_video.touch()
         session.load(new_video)
 
-        assert session.document.edit_spec == EditSpec()
+        assert session._raw_document.edit_spec == EditSpec()
 
     def test_source_duration_available(self, test_video: Path):
         """Source duration is available for EditSpec calculations."""

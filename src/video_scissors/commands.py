@@ -59,17 +59,17 @@ class AddCutCommand(QUndoCommand):
 
     def redo(self) -> None:
         """Add the cut to the document."""
-        self._previous_spec = self._session.document.edit_spec
+        self._previous_spec = self._session._raw_document.edit_spec
         new_spec = self._previous_spec.with_cut(self._start, self._end)
         self._session._set_document(
-            Document(edit_spec=new_spec, markers=self._session.document.markers)
+            Document(edit_spec=new_spec, markers=self._session._raw_document.markers)
         )
 
     def undo(self) -> None:
         """Restore the previous edit spec."""
         if self._previous_spec is not None:
             self._session._set_document(
-                Document(edit_spec=self._previous_spec, markers=self._session.document.markers)
+                Document(edit_spec=self._previous_spec, markers=self._session._raw_document.markers)
             )
 
 
@@ -95,19 +95,20 @@ class SetCropCommand(QUndoCommand):
 
     def redo(self) -> None:
         """Set the crop on the document."""
-        self._previous_crop = self._session.document.edit_spec.crop
-        new_spec = self._session.document.edit_spec.with_crop(
+        self._previous_crop = self._session._raw_document.edit_spec.crop
+        new_spec = self._session._raw_document.edit_spec.with_crop(
             self._x, self._y, self._width, self._height
         )
         self._session._set_document(
-            Document(edit_spec=new_spec, markers=self._session.document.markers)
+            Document(edit_spec=new_spec, markers=self._session._raw_document.markers)
         )
 
     def undo(self) -> None:
         """Restore the previous crop."""
-        new_spec = EditSpec(cuts=self._session.document.edit_spec.cuts, crop=self._previous_crop)
+        cuts = self._session._raw_document.edit_spec.cuts
+        new_spec = EditSpec(cuts=cuts, crop=self._previous_crop)
         self._session._set_document(
-            Document(edit_spec=new_spec, markers=self._session.document.markers)
+            Document(edit_spec=new_spec, markers=self._session._raw_document.markers)
         )
 
 
@@ -121,13 +122,13 @@ class AddMarkerCommand(QUndoCommand):
 
     def redo(self) -> None:
         """Add the marker to the document."""
-        doc = self._session.document
+        doc = self._session._raw_document
         new_markers = tuple(sorted(doc.markers + (self._marker,), key=lambda m: m.time))
         self._session._set_document(Document(edit_spec=doc.edit_spec, markers=new_markers))
 
     def undo(self) -> None:
         """Remove the marker from the document."""
-        doc = self._session.document
+        doc = self._session._raw_document
         new_markers = tuple(m for m in doc.markers if m.id != self._marker.id)
         self._session._set_document(Document(edit_spec=doc.edit_spec, markers=new_markers))
 
@@ -142,13 +143,13 @@ class RemoveMarkerCommand(QUndoCommand):
 
     def redo(self) -> None:
         """Remove the marker from the document."""
-        doc = self._session.document
+        doc = self._session._raw_document
         new_markers = tuple(m for m in doc.markers if m.id != self._marker.id)
         self._session._set_document(Document(edit_spec=doc.edit_spec, markers=new_markers))
 
     def undo(self) -> None:
         """Restore the marker to the document."""
-        doc = self._session.document
+        doc = self._session._raw_document
         new_markers = tuple(sorted(doc.markers + (self._marker,), key=lambda m: m.time))
         self._session._set_document(Document(edit_spec=doc.edit_spec, markers=new_markers))
 
@@ -172,7 +173,7 @@ class MoveMarkerCommand(QUndoCommand):
 
     def redo(self) -> None:
         """Move the marker to the new time."""
-        doc = self._session.document
+        doc = self._session._raw_document
         updated = (
             Marker(id=m.id, time=self._new_time) if m.id == self._marker_id else m
             for m in doc.markers
@@ -182,7 +183,7 @@ class MoveMarkerCommand(QUndoCommand):
 
     def undo(self) -> None:
         """Move the marker back to the old time."""
-        doc = self._session.document
+        doc = self._session._raw_document
         updated = (
             Marker(id=m.id, time=self._old_time) if m.id == self._marker_id else m
             for m in doc.markers
@@ -206,10 +207,10 @@ class ClearMarkersCommand(QUndoCommand):
 
     def redo(self) -> None:
         """Remove all markers."""
-        doc = self._session.document
+        doc = self._session._raw_document
         self._session._set_document(Document(edit_spec=doc.edit_spec, markers=()))
 
     def undo(self) -> None:
         """Restore all markers."""
-        doc = self._session.document
+        doc = self._session._raw_document
         self._session._set_document(Document(edit_spec=doc.edit_spec, markers=self._markers))

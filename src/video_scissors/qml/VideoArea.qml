@@ -12,7 +12,7 @@ Rectangle {
     readonly property alias hasCrop: cropOverlay.hasCrop
 
     // Whether a crop from the EditSpec is actively clipping the video
-    readonly property bool cropActive: session.hasCrop
+    readonly property bool cropActive: session.document.editSpec.hasCrop
 
     function play() { videoPlayer.play() }
     function pause() { videoPlayer.pause() }
@@ -27,7 +27,7 @@ Rectangle {
     // This matches VideoOutput.PreserveAspectFit layout.
     readonly property int sourceWidth: session.videoWidth
     readonly property int sourceHeight: session.videoHeight
-    readonly property var activeCrop: session.cropRect
+    readonly property var activeCrop: session.document.editSpec.cropRect
 
     // The region we want to display: crop rect when active, full frame otherwise
     readonly property int displayRegionX: root.cropActive && activeCrop ? activeCrop.x : 0
@@ -86,7 +86,7 @@ Rectangle {
 
             // Auto-skip cut regions during playback
             onPositionChanged: {
-                var cutRegions = session.cutRegions
+                var cutRegions = session.document.editSpec.cutRegions
                 for (var i = 0; i < cutRegions.length; i++) {
                     var cut = cutRegions[i]
                     // If inside a cut region, skip to end of cut
@@ -100,7 +100,7 @@ Rectangle {
             // Reload when working video changes
             Connections {
                 target: session
-                function onVideoChanged() {
+                function onWorkingVideoUrlChanged() {
                     if (session.hasVideo) {
                         videoPlayer.source = session.workingVideoUrl
                         // Play-pause trick to render first frame immediately
