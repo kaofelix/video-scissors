@@ -24,7 +24,7 @@ Item {
     // Video properties (for thumbnails)
     property int videoWidth: 0
     property int videoHeight: 0
-    property int videoRevision: 0
+    property int contentRevision: 0
     property real videoFrameRate: 30.0  // Default to 30fps
 
     // Marker properties
@@ -125,7 +125,7 @@ Item {
             duration: root.duration
             videoWidth: root.videoWidth
             videoHeight: root.videoHeight
-            videoRevision: root.videoRevision
+            contentRevision: root.contentRevision
             enabled: root.enabled
             topRadius: 0  // Square where it meets CutBar
             bottomRadius: root.cornerRadius

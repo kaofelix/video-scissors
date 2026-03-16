@@ -273,29 +273,46 @@ class TestBridgeCut:
             assert str(test_video) in bridge.workingVideoUrl
 
 
-class TestBridgeWorkingVideoRevision:
-    """Tests for strategic working-video change tracking via the bridge."""
+class TestBridgeContentRevision:
+    """Tests for content revision tracking (thumbnails staleness)."""
 
-    def test_bridge_exposes_working_video_revision(self, test_video: Path, tmp_path: Path):
+    def test_content_revision_starts_at_zero(self):
+        """Content revision starts at 0 before any video is loaded."""
         session = EditorSession()
         bridge = make_bridge(session)
 
-        assert bridge.workingVideoRevision == 0
+        assert bridge.contentRevision == 0
+
+    def test_content_revision_increments_on_file_open(self, test_video: Path):
+        """Opening a file increments the content revision."""
+        session = EditorSession()
+        bridge = make_bridge(session)
 
         bridge.openFile(str(test_video))
-        after_open = bridge.workingVideoRevision
 
-        edited = tmp_path / "edited.mp4"
-        generate_test_video(edited, duration=1.0)
-        bridge.setWorkingVideo(str(edited))
-        after_edit = bridge.workingVideoRevision
+        assert bridge.contentRevision > 0
 
-        bridge.undo()
-        after_undo = bridge.workingVideoRevision
+    def test_content_revision_increments_on_edit_spec_change(self, test_video: Path):
+        """Edit spec changes (crop, cut) increment the content revision."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+        rev_after_load = bridge.contentRevision
 
-        assert after_open > 0
-        assert after_edit > after_open
-        assert after_undo > after_edit
+        bridge.setCrop(10, 20, 100, 80)
+
+        assert bridge.contentRevision > rev_after_load
+
+    def test_content_revision_increments_on_close(self, test_video: Path):
+        """Closing the session increments the content revision."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+        rev_after_load = bridge.contentRevision
+
+        bridge.close()
+
+        assert bridge.contentRevision > rev_after_load
 
     def test_request_thumbnails_ignores_stale_revision(
         self, test_video: Path, tmp_path: Path, qtbot
@@ -310,7 +327,7 @@ class TestBridgeWorkingVideoRevision:
         signals = []
         bridge.thumbnailsReady.connect(lambda urls: signals.append(urls))
 
-        stale_revision = bridge.workingVideoRevision - 1
+        stale_revision = bridge.contentRevision - 1
         bridge.requestThumbnails(3, 40, stale_revision)
         qtbot.wait(50)
 
@@ -330,7 +347,7 @@ class TestBridgeWorkingVideoRevision:
         signals = []
         bridge.thumbnailsReady.connect(lambda urls: signals.append(urls))
 
-        bridge.requestThumbnails(3, 40, bridge.workingVideoRevision)
+        bridge.requestThumbnails(3, 40, bridge.contentRevision)
         qtbot.waitUntil(lambda: len(signals) == 1, timeout=1000)
 
         assert signals == [[f"file://{fake_frame}"]]
@@ -352,7 +369,7 @@ class TestBridgeWorkingVideoRevision:
         signals = []
         bridge.thumbnailsReady.connect(lambda urls: signals.append(urls))
 
-        bridge.requestThumbnails(3, 40, bridge.workingVideoRevision)
+        bridge.requestThumbnails(3, 40, bridge.contentRevision)
         qtbot.waitUntil(lambda: len(signals) == 1, timeout=1000)
 
         expected_crop = CropRect(x=40, y=30, width=200, height=150)

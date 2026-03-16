@@ -67,7 +67,7 @@ ApplicationWindow {
             duration: videoArea.duration
             videoWidth: session.displayWidth
             videoHeight: session.displayHeight
-            videoRevision: session.workingVideoRevision
+            contentRevision: session.contentRevision
             markers: session.markers
             enabled: session.hasVideo && !videoArea.hasCrop
             focus: session.hasVideo && !videoArea.hasCrop

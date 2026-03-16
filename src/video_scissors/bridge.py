@@ -24,6 +24,7 @@ class SessionBridge(QObject):
     videoChanged = Signal()
     markersChanged = Signal()
     editSpecChanged = Signal()
+    contentRevisionChanged = Signal()
     undoStateChanged = Signal()
     thumbnailsReady = Signal(list)  # List of file:// URLs
 
@@ -39,10 +40,14 @@ class SessionBridge(QObject):
         self._thumbnail_extractor = thumbnail_extractor
         self._edit_service = edit_service
         self._suggested_position_ms: float = 0
+        self._content_revision: int = 0
 
         # Connect QUndoStack signals to bridge signal for QML canUndo/canRedo
         self._session.undo_stack.canUndoChanged.connect(self.undoStateChanged)
         self._session.undo_stack.canRedoChanged.connect(self.undoStateChanged)
+
+        # Content revision tracks all thumbnail-invalidating changes
+        self.editSpecChanged.connect(self._bump_content_revision)
 
     @Property(bool, notify=videoChanged)
     def hasVideo(self) -> bool:
@@ -60,6 +65,20 @@ class SessionBridge(QObject):
     def workingVideoRevision(self) -> int:
         """Monotonic revision for current working-video changes."""
         return self._session.working_video_revision
+
+    @Property(int, notify=contentRevisionChanged)
+    def contentRevision(self) -> int:
+        """Revision counter for thumbnail invalidation.
+
+        Increments on file open, close, and edit spec changes.
+        Used by the Scrubber to know when to re-extract thumbnails,
+        and by requestThumbnails to discard stale background results.
+        """
+        return self._content_revision
+
+    def _bump_content_revision(self) -> None:
+        self._content_revision += 1
+        self.contentRevisionChanged.emit()
 
     @Property(int, notify=videoChanged)
     def videoWidth(self) -> int:
@@ -162,12 +181,14 @@ class SessionBridge(QObject):
         """Open a video file."""
         self._session.load(Path(path))
         self.videoChanged.emit()
+        self._bump_content_revision()
 
     @Slot()
     def close(self) -> None:
         """Close the current session."""
         self._session.close()
         self.videoChanged.emit()
+        self._bump_content_revision()
 
     @Slot(str)
     def setWorkingVideo(self, path: str) -> None:
@@ -305,11 +326,10 @@ class SessionBridge(QObject):
         Args:
             frame_count: Number of frames to extract
             thumb_height: Height of each thumbnail in pixels
-            revision: Working-video revision the request applies to
+            revision: Content revision the request applies to
         """
         video_path = self._session.working_video
-        current_revision = self._session.working_video_revision
-        if video_path is None or frame_count <= 0 or revision != current_revision:
+        if video_path is None or frame_count <= 0 or revision != self._content_revision:
             return
 
         crop = self._session.document.edit_spec.crop
@@ -318,7 +338,7 @@ class SessionBridge(QObject):
             frames = self._thumbnail_extractor.extract(
                 video_path, frame_count, thumb_height, crop=crop
             )
-            if revision != self._session.working_video_revision:
+            if revision != self._content_revision:
                 return
             urls = [path.as_uri() for path in frames]
             # Emit signal (safe from thread via Qt's queued connections)

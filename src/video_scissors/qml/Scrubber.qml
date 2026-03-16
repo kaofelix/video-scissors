@@ -29,7 +29,7 @@ Item {
     property real duration: 0          // Total duration in ms
     property int videoWidth: 0         // Video width for aspect ratio
     property int videoHeight: 0        // Video height for aspect ratio
-    property int videoRevision: 0      // Strategic identity for the working video
+    property int contentRevision: 0    // Bumps on file load, close, and edit spec changes
     property bool enabled: true
     property var thumbnailUrls: []     // List of thumbnail file:// URLs
     property int topRadius: 0          // Top corner radius (0 when joined)
@@ -52,19 +52,7 @@ Item {
         requestThumbnails()
     }
 
-    onVideoRevisionChanged: {
-        thumbnailUrls = []
-        requestThumbnails()
-    }
-
-    // Re-request when display dimensions change (e.g., crop applied/removed)
-    // even if frameCount stays the same (same aspect ratio crop)
-    onVideoWidthChanged: {
-        thumbnailUrls = []
-        requestThumbnails()
-    }
-
-    onVideoHeightChanged: {
+    onContentRevisionChanged: {
         thumbnailUrls = []
         requestThumbnails()
     }
@@ -72,7 +60,7 @@ Item {
     // Request thumbnail extraction
     function requestThumbnails() {
         if (frameCount > 0 && thumbHeight > 0) {
-            thumbnailsRequested(frameCount, thumbHeight, videoRevision)
+            thumbnailsRequested(frameCount, thumbHeight, contentRevision)
         }
     }
 
