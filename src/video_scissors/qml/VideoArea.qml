@@ -108,16 +108,16 @@ Rectangle {
             }
 
             // When the video reaches the end, freeze on the last effective
-            // frame instead of showing a black screen. The play-pause trick
-            // renders the frame at the seeked position.
+            // frame instead of showing a black screen.
+            // Order matters: play() exits StoppedState, pause() freezes,
+            // then seek to the last frame so the decoder renders it.
             onPlaybackStateChanged: {
                 if (playbackState === MediaPlayer.StoppedState && session.hasVideo) {
-                    var lastSourceMs = session.effectiveToSource(
-                        Math.max(0, session.effectiveDurationMs - 1)
-                    )
-                    videoPlayer.position = lastSourceMs
                     videoPlayer.play()
                     videoPlayer.pause()
+                    videoPlayer.position = session.effectiveToSource(
+                        Math.max(0, session.effectiveDurationMs - 1)
+                    )
                 }
             }
 
