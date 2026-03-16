@@ -46,7 +46,12 @@ class SetWorkingVideoCommand(QUndoCommand):
 
 
 class AddCutCommand(QUndoCommand):
-    """Add a cut region to the edit spec."""
+    """Add a cut region to the edit spec.
+
+    Also removes markers at the cut boundaries, since they collapse
+    to the same effective position after the cut. Undo restores both
+    the edit spec and the removed markers.
+    """
 
     def __init__(
         self, session: EditorSession, start: float, end: float, parent: QUndoCommand | None = None
@@ -55,22 +60,33 @@ class AddCutCommand(QUndoCommand):
         self._session = session
         self._start = start
         self._end = end
-        self._previous_spec: EditSpec | None = None
+        self._previous_document: Document | None = None
 
     def redo(self) -> None:
-        """Add the cut to the document."""
-        self._previous_spec = self._session._raw_document.edit_spec
-        new_spec = self._previous_spec.with_cut(self._start, self._end)
-        self._session._set_document(
-            Document(edit_spec=new_spec, markers=self._session._raw_document.markers)
-        )
+        """Add the cut and merge/remove boundary markers."""
+        self._previous_document = self._session._raw_document
+        new_spec = self._previous_document.edit_spec.with_cut(self._start, self._end)
+
+        has_start_marker = any(m.time == self._start for m in self._previous_document.markers)
+        has_end_marker = any(m.time == self._end for m in self._previous_document.markers)
+
+        if has_start_marker and has_end_marker:
+            # Two boundary markers: keep the one at start (the join point), drop end
+            new_markers = tuple(m for m in self._previous_document.markers if m.time != self._end)
+        else:
+            # Single boundary marker: remove it
+            new_markers = tuple(
+                m
+                for m in self._previous_document.markers
+                if m.time != self._start and m.time != self._end
+            )
+
+        self._session._set_document(Document(edit_spec=new_spec, markers=new_markers))
 
     def undo(self) -> None:
-        """Restore the previous edit spec."""
-        if self._previous_spec is not None:
-            self._session._set_document(
-                Document(edit_spec=self._previous_spec, markers=self._session._raw_document.markers)
-            )
+        """Restore the previous document (edit spec + markers)."""
+        if self._previous_document is not None:
+            self._session._set_document(self._previous_document)
 
 
 class SetCropCommand(QUndoCommand):

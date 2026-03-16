@@ -77,6 +77,69 @@ class TestAddCutCommand:
         assert "1.5" in cmd.text()
         assert "2.5" in cmd.text()
 
+    def test_two_boundary_markers_merge_into_one(self, session_with_video: EditorSession):
+        """Cutting between two markers merges them into one at the join point."""
+        session_with_video.add_marker(1.0)
+        session_with_video.add_marker(2.0)
+        session_with_video.undo_stack.clear()
+
+        cmd = AddCutCommand(session_with_video, start=1.0, end=2.0)
+        cmd.redo()
+
+        assert len(session_with_video.markers) == 1
+        assert session_with_video.markers[0].time == 1.0
+
+    def test_single_boundary_marker_at_start_removed(self, session_with_video: EditorSession):
+        """Cutting from a marker to end of video removes the lone marker."""
+        session_with_video.add_marker(1.0)
+        session_with_video.undo_stack.clear()
+
+        cmd = AddCutCommand(session_with_video, start=1.0, end=2.0)
+        cmd.redo()
+
+        assert len(session_with_video.markers) == 0
+
+    def test_single_boundary_marker_at_end_removed(self, session_with_video: EditorSession):
+        """Cutting from video start to a marker removes the lone marker."""
+        session_with_video.add_marker(1.0)
+        session_with_video.undo_stack.clear()
+
+        cmd = AddCutCommand(session_with_video, start=0.0, end=1.0)
+        cmd.redo()
+
+        assert len(session_with_video.markers) == 0
+
+    def test_undo_restores_both_boundary_markers(self, session_with_video: EditorSession):
+        """Undo restores markers that were merged by the cut."""
+        m1 = session_with_video.add_marker(1.0)
+        m2 = session_with_video.add_marker(2.0)
+        session_with_video.undo_stack.clear()
+
+        cmd = AddCutCommand(session_with_video, start=1.0, end=2.0)
+        cmd.redo()
+        cmd.undo()
+
+        marker_ids = {m.id for m in session_with_video.markers}
+        assert m1.id in marker_ids
+        assert m2.id in marker_ids
+
+    def test_preserves_non_boundary_markers(self, session_with_video: EditorSession):
+        """Markers outside the cut boundaries are kept."""
+        session_with_video.add_marker(0.5)
+        session_with_video.add_marker(1.0)
+        session_with_video.add_marker(2.0)
+        session_with_video.add_marker(3.0)
+        session_with_video.undo_stack.clear()
+
+        cmd = AddCutCommand(session_with_video, start=1.0, end=2.0)
+        cmd.redo()
+
+        times = [m.time for m in session_with_video.markers]
+        assert 0.5 in times
+        assert 1.0 in times  # Merged marker at join point
+        assert 3.0 in times
+        assert len(session_with_video.markers) == 3
+
 
 class TestSetCropCommand:
     """Tests for SetCropCommand."""
