@@ -23,6 +23,75 @@ from conftest import generate_test_video
 SCREENSHOTS_DIR = Path(__file__).parent / "screenshots"
 
 
+class TestCropPreview:
+    """GUI tests for visual crop preview via QML clipping."""
+
+    def test_no_crop_shows_full_video(self, app_window, qtbot, test_video):
+        """Without a crop, the video clip container is not active."""
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(200)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+        assert video_area is not None
+        assert video_area.property("cropActive") is False
+
+    def test_crop_activates_clip_preview(self, app_window, qtbot, test_video):
+        """After applying a crop, the video area shows clipped preview."""
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(200)
+
+        # Apply a crop via bridge (non-destructive)
+        app_window._bridge.setCrop(40, 30, 200, 150)
+        qtbot.wait(100)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+        assert video_area is not None
+        assert video_area.property("cropActive") is True
+
+    def test_undo_crop_returns_to_full_frame(self, app_window, qtbot, test_video):
+        """Undoing a crop returns the video to full-frame display."""
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(200)
+
+        # Apply crop then undo
+        app_window._bridge.setCrop(40, 30, 200, 150)
+        qtbot.wait(100)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+        assert video_area.property("cropActive") is True
+
+        app_window._bridge.undo()
+        qtbot.wait(100)
+
+        assert video_area.property("cropActive") is False
+
+    def test_crop_overlay_hidden_when_crop_active(self, app_window, qtbot, test_video):
+        """CropOverlay drawing is disabled when a crop is already applied."""
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(200)
+
+        # Apply crop
+        app_window._bridge.setCrop(40, 30, 200, 150)
+        qtbot.wait(100)
+
+        crop_overlay = app_window.findChild(QObject, "cropOverlay")
+        assert crop_overlay is not None
+        assert crop_overlay.property("visible") is False
+
+    def test_crop_preview_screenshot(self, app_window, qtbot, test_video, capture_screenshot):
+        """Visual verification: crop preview clips the video correctly."""
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(200)
+
+        capture_screenshot(app_window, "crop_preview_before")
+
+        # Apply crop to center region
+        app_window._bridge.setCrop(60, 40, 200, 160)
+        qtbot.wait(100)
+
+        capture_screenshot(app_window, "crop_preview_after")
+
+
 class TestAppShell:
     """Basic GUI tests for the app shell."""
 

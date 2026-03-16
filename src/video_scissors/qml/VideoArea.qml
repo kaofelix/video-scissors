@@ -4,64 +4,127 @@ import QtMultimedia
 
 Rectangle {
     id: root
+    objectName: "videoArea"
 
     property alias position: videoPlayer.position
     readonly property alias duration: videoPlayer.duration
     readonly property alias playbackState: videoPlayer.playbackState
     readonly property alias hasCrop: cropOverlay.hasCrop
 
+    // Whether a crop from the EditSpec is actively clipping the video
+    readonly property bool cropActive: session.hasCrop
+
     function play() { videoPlayer.play() }
     function pause() { videoPlayer.pause() }
 
     color: "#000000"
 
-    Video {
-        id: videoPlayer
-        objectName: "videoPlayer"
-        anchors.fill: parent
-        fillMode: VideoOutput.PreserveAspectFit
-        source: session.workingVideoUrl
+    // --- Crop preview clipping ---
+    // When a crop is applied in the EditSpec, we clip the video to show
+    // only the cropped region, scaled to fill the available space.
 
-        // Auto-skip cut regions during playback
-        onPositionChanged: {
-            var cutRegions = session.cutRegions
-            for (var i = 0; i < cutRegions.length; i++) {
-                var cut = cutRegions[i]
-                // If inside a cut region, skip to end of cut
-                if (position >= cut.start && position < cut.end) {
-                    videoPlayer.position = cut.end
-                    break
-                }
+    // Compute the displayed video rect (where the video renders within root)
+    // This matches VideoOutput.PreserveAspectFit layout.
+    readonly property int sourceWidth: session.videoWidth
+    readonly property int sourceHeight: session.videoHeight
+    readonly property var activeCrop: session.cropRect
+
+    // The region we want to display: crop rect when active, full frame otherwise
+    readonly property int displayRegionX: root.cropActive ? activeCrop.x : 0
+    readonly property int displayRegionY: root.cropActive ? activeCrop.y : 0
+    readonly property int displayRegionW: root.cropActive ? activeCrop.width : sourceWidth
+    readonly property int displayRegionH: root.cropActive ? activeCrop.height : sourceHeight
+
+    Item {
+        id: clipContainer
+        anchors.centerIn: parent
+        clip: root.cropActive
+
+        // When crop active: sized to fit crop aspect ratio within parent.
+        // When no crop: fill parent entirely (video handles its own aspect).
+        width: root.cropActive ? fittedSize.width : root.width
+        height: root.cropActive ? fittedSize.height : root.height
+
+        // Compute fitted size for the crop region within the parent
+        readonly property size fittedSize: {
+            if (!root.cropActive || root.displayRegionW <= 0 || root.displayRegionH <= 0)
+                return Qt.size(root.width, root.height)
+
+            var cropAspect = root.displayRegionW / root.displayRegionH
+            var parentAspect = root.width / root.height
+
+            if (cropAspect > parentAspect) {
+                // Crop is wider: fit to width
+                return Qt.size(root.width, root.width / cropAspect)
+            } else {
+                // Crop is taller: fit to height
+                return Qt.size(root.height * cropAspect, root.height)
             }
         }
 
-        // Reload when working video changes
-        Connections {
-            target: session
-            function onVideoChanged() {
-                if (session.hasVideo) {
-                    videoPlayer.source = session.workingVideoUrl
-                    // Play-pause trick to render first frame immediately
-                    videoPlayer.play()
-                    videoPlayer.pause()
-                    // Use suggested position from backend, clamped to valid range
-                    var suggestedPos = session.suggestedPositionMs
-                    var maxPos = videoPlayer.duration > 0 ? videoPlayer.duration : 0
-                    videoPlayer.position = Math.min(suggestedPos, maxPos)
-                } else {
-                    videoPlayer.stop()
-                    videoPlayer.source = ""
+        // Scale factor: how much to scale the full video so the crop region
+        // fills the clip container
+        readonly property real cropScale: {
+            if (!root.cropActive || root.displayRegionW <= 0)
+                return 1.0
+            return clipContainer.width / root.displayRegionW
+        }
+
+        Video {
+            id: videoPlayer
+            objectName: "videoPlayer"
+
+            // When crop active: position and scale so crop region fills container
+            // When no crop: fill container normally with aspect-fit
+            x: root.cropActive ? -root.displayRegionX * clipContainer.cropScale : 0
+            y: root.cropActive ? -root.displayRegionY * clipContainer.cropScale : 0
+            width: root.cropActive ? root.sourceWidth * clipContainer.cropScale : parent.width
+            height: root.cropActive ? root.sourceHeight * clipContainer.cropScale : parent.height
+            fillMode: root.cropActive ? VideoOutput.Stretch : VideoOutput.PreserveAspectFit
+
+            source: session.workingVideoUrl
+
+            // Auto-skip cut regions during playback
+            onPositionChanged: {
+                var cutRegions = session.cutRegions
+                for (var i = 0; i < cutRegions.length; i++) {
+                    var cut = cutRegions[i]
+                    // If inside a cut region, skip to end of cut
+                    if (position >= cut.start && position < cut.end) {
+                        videoPlayer.position = cut.end
+                        break
+                    }
+                }
+            }
+
+            // Reload when working video changes
+            Connections {
+                target: session
+                function onVideoChanged() {
+                    if (session.hasVideo) {
+                        videoPlayer.source = session.workingVideoUrl
+                        // Play-pause trick to render first frame immediately
+                        videoPlayer.play()
+                        videoPlayer.pause()
+                        // Use suggested position from backend, clamped to valid range
+                        var suggestedPos = session.suggestedPositionMs
+                        var maxPos = videoPlayer.duration > 0 ? videoPlayer.duration : 0
+                        videoPlayer.position = Math.min(suggestedPos, maxPos)
+                    } else {
+                        videoPlayer.stop()
+                        videoPlayer.source = ""
+                    }
                 }
             }
         }
     }
 
-    // Crop overlay - always active when video loaded
+    // Crop overlay - only when no crop is applied yet
     CropOverlay {
         id: cropOverlay
         objectName: "cropOverlay"
         anchors.fill: parent
-        visible: session.hasVideo
+        visible: session.hasVideo && !root.cropActive
         videoWidth: session.videoWidth
         videoHeight: session.videoHeight
         videoRevision: session.workingVideoRevision
@@ -85,7 +148,7 @@ Rectangle {
         visible: !session.hasVideo
     }
 
-    // Crop controls - appear when crop selection exists
+    // Crop controls - appear when crop selection exists (during drawing)
     Row {
         anchors.bottom: parent.bottom
         anchors.horizontalCenter: parent.horizontalCenter
