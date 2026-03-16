@@ -685,6 +685,58 @@ class TestEditSpecProperties:
 
         assert session.effectiveToSource(750) == 1250
 
+    def test_effective_markers_no_cuts(self, test_video: Path):
+        """effectiveMarkers returns source times when no cuts exist."""
+        session = make_session()
+        session.load(test_video)
+        session.addMarker(0.5)
+        session.addMarker(1.5)
+
+        markers: list[dict] = session.effectiveMarkers  # type: ignore[assignment]
+        times = [m["time"] for m in markers]
+        assert times == [0.5, 1.5]
+
+    def test_effective_markers_with_cut(self, test_video: Path):
+        """effectiveMarkers converts times to effective coordinates."""
+        session = make_session()
+        session.load(test_video)
+        session.addMarker(0.3)  # Before cut: stays 0.3
+        session.addMarker(1.5)  # After cut [0.5, 1.0): shifts by -0.5 → 1.0
+        session.addCut(0.5, 1.0)
+
+        markers: list[dict] = session.effectiveMarkers  # type: ignore[assignment]
+        times = sorted(m["time"] for m in markers)
+        assert times[0] == 0.3
+        assert times[1] == 1.0
+
+    def test_effective_markers_preserves_ids(self, test_video: Path):
+        """effectiveMarkers preserves marker IDs for mapping back."""
+        session = make_session()
+        session.load(test_video)
+        result = session.addMarker(1.5)
+        marker_id = result["id"]
+
+        markers = session.effectiveMarkers
+        assert len(markers) == 1
+        assert markers[0]["id"] == marker_id
+
+    def test_effective_markers_signal_on_marker_change(self, test_video: Path, qtbot):
+        """effectiveMarkersChanged fires when markers change."""
+        session = make_session()
+        session.load(test_video)
+
+        with qtbot.waitSignal(session.effectiveMarkersChanged, timeout=100):
+            session.addMarker(0.5)
+
+    def test_effective_markers_signal_on_cut_change(self, test_video: Path, qtbot):
+        """effectiveMarkersChanged fires when cuts change."""
+        session = make_session()
+        session.load(test_video)
+        session.addMarker(1.5)
+
+        with qtbot.waitSignal(session.effectiveMarkersChanged, timeout=100):
+            session.addCut(0.5, 1.0)
+
     def test_crop_rect_none_when_no_crop(self, test_video: Path):
         session = make_session()
         session.load(test_video)

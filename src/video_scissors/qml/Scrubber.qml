@@ -30,7 +30,7 @@ Item {
     property int videoWidth: 0         // Video width for aspect ratio
     property int videoHeight: 0        // Video height for aspect ratio
     property int contentRevision: 0    // Bumps on file load, close, and edit spec changes
-    property var cutRegions: []        // Cut regions {start, end} in ms (from parent)
+
     property bool enabled: true
     property var thumbnailUrls: []     // List of thumbnail file:// URLs
     property int topRadius: 0          // Top corner radius (0 when joined)
@@ -141,22 +141,7 @@ Item {
             }
         }
 
-        // Cut region overlays (red tint to show removed sections)
-        Repeater {
-            model: root.cutRegions
 
-            Rectangle {
-                property real startPos: root.duration > 0 ? (modelData.start / root.duration) * track.width : 0
-                property real endPos: root.duration > 0 ? (modelData.end / root.duration) * track.width : 0
-
-                x: startPos
-                width: Math.max(0, endPos - startPos)
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                color: "#cc3333"
-                opacity: 0.5
-            }
-        }
     }
 
     // Playhead indicator

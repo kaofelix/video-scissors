@@ -10,6 +10,19 @@ ApplicationWindow {
     height: 600
     title: "Video Scissors"
 
+    // -- Effective-time conversion boundary --
+    // VideoArea and session operate in source time.
+    // Timeline and TransportControls operate in effective time.
+    // Main.qml converts at the boundary.
+
+    // Effective position: recomputed when source position or cuts change.
+    // Reading contentRevision forces rebind when edit spec changes, since
+    // sourceToEffective is a Slot call that QML can't track dependencies for.
+    readonly property real effectivePosition: {
+        session.contentRevision  // rebind when cuts change
+        return session.sourceToEffective(videoArea.position)
+    }
+
     menuBar: MenuBar {
         Menu {
             title: qsTr("&File")
@@ -57,44 +70,52 @@ ApplicationWindow {
         }
 
         // Unified timeline with cut bar and scrubber
+        // All times here are in effective (post-cuts) coordinates.
         Timeline {
             id: timeline
             objectName: "timeline"
             Layout.fillWidth: true
             Layout.preferredHeight: implicitHeight
 
-            position: videoArea.position
-            duration: videoArea.duration
+            position: window.effectivePosition
+            duration: session.effectiveDurationMs
             videoWidth: session.displayWidth
             videoHeight: session.displayHeight
             contentRevision: session.contentRevision
-            markers: session.document.markers
-            cutRegions: session.document.editSpec.cutRegions
+            markers: session.effectiveMarkers
             enabled: session.hasVideo && !videoArea.hasCrop
             focus: session.hasVideo && !videoArea.hasCrop
 
-            onSeekRequested: function(positionMs) {
-                videoArea.position = positionMs
+            onSeekRequested: function(effectiveMs) {
+                // Convert effective time back to source for the video player
+                videoArea.position = session.effectiveToSource(effectiveMs)
             }
 
             onThumbnailsRequested: function(count, height, revision) {
                 session.requestThumbnails(count, height, revision)
             }
 
-            onMarkerAdded: function(timeSeconds) {
-                session.addMarker(timeSeconds)
+            onMarkerAdded: function(effectiveTimeSeconds) {
+                // Convert effective time to source for storage
+                var sourceMs = session.effectiveToSource(effectiveTimeSeconds * 1000)
+                session.addMarker(sourceMs / 1000)
             }
 
             onMarkerRemoved: function(markerId) {
                 session.removeMarker(markerId)
             }
 
-            onMarkerMoved: function(markerId, newTime) {
-                session.moveMarker(markerId, newTime)
+            onMarkerMoved: function(markerId, effectiveNewTime) {
+                // Convert effective time to source for storage
+                var sourceMs = session.effectiveToSource(effectiveNewTime * 1000)
+                session.moveMarker(markerId, sourceMs / 1000)
             }
 
-            onSegmentCut: function(startSeconds, endSeconds) {
-                session.addCut(startSeconds, endSeconds)
+            onSegmentCut: function(effectiveStart, effectiveEnd) {
+                // Convert effective boundaries to source for the cut operation
+                var sourceStart = session.effectiveToSource(effectiveStart * 1000) / 1000
+                var sourceEnd = session.effectiveToSource(effectiveEnd * 1000) / 1000
+                session.addCut(sourceStart, sourceEnd)
             }
 
             Connections {
@@ -107,8 +128,8 @@ ApplicationWindow {
 
         TransportControls {
             Layout.fillWidth: true
-            position: videoArea.position
-            duration: videoArea.duration
+            position: window.effectivePosition
+            duration: session.effectiveDurationMs
             playbackState: videoArea.playbackState
             enabled: session.hasVideo
             onPlayRequested: videoArea.play()

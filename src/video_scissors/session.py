@@ -76,6 +76,9 @@ class EditorSession(QObject):
     contentRevisionChanged = Signal()
     suggestedPositionMsChanged = Signal()
 
+    # Derived data signals
+    effectiveMarkersChanged = Signal()
+
     # Forwarded from QUndoStack
     undoStateChanged = Signal()
 
@@ -113,6 +116,9 @@ class EditorSession(QObject):
         self._document_model._edit_spec_model.cropChanged.connect(self._bump_content_revision)
         # effective duration depends on cuts
         self._document_model._edit_spec_model.cutsChanged.connect(self.effectiveDurationMsChanged)
+        # effective markers depend on both markers and cuts
+        self._document_model.markersChanged.connect(self.effectiveMarkersChanged)
+        self._document_model._edit_spec_model.cutsChanged.connect(self.effectiveMarkersChanged)
 
     # ------------------------------------------------------------------ #
     #  Qt Properties (QML interface)                                      #
@@ -249,6 +255,14 @@ class EditorSession(QObject):
     def effectiveDurationMs(self) -> float:
         """Duration after cuts applied, in milliseconds."""
         return self.effective_duration * 1000
+
+    @Property(list, notify=effectiveMarkersChanged)
+    def effectiveMarkers(self) -> list[dict]:
+        """Markers with times converted to effective (post-cuts) coordinates."""
+        doc = self._raw_document
+        return [
+            {"id": m.id, "time": _source_to_effective(m.time, doc.edit_spec)} for m in doc.markers
+        ]
 
     @Property(int, notify=contentRevisionChanged)
     def contentRevision(self) -> int:
