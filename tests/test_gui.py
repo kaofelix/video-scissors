@@ -65,8 +65,8 @@ class TestCropPreview:
 
         assert video_area.property("cropActive") is False
 
-    def test_crop_overlay_hidden_when_crop_active(self, app_window, qtbot, test_video):
-        """CropOverlay drawing is disabled when a crop is already applied."""
+    def test_crop_overlay_visible_when_crop_active(self, app_window, qtbot, test_video):
+        """CropOverlay remains visible and interactive when a crop is applied."""
         app_window._bridge.openFile(str(test_video))
         qtbot.wait(200)
 
@@ -76,7 +76,82 @@ class TestCropPreview:
 
         crop_overlay = app_window.findChild(QObject, "cropOverlay")
         assert crop_overlay is not None
-        assert crop_overlay.property("visible") is False
+        assert crop_overlay.property("visible") is True
+
+    def test_crop_overlay_uses_crop_dimensions_when_crop_active(
+        self, app_window, qtbot, test_video
+    ):
+        """When a crop is active, overlay works in cropped video dimensions."""
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(200)
+
+        crop_overlay = app_window.findChild(QObject, "cropOverlay")
+        assert crop_overlay is not None
+
+        # Before crop: overlay uses source dimensions
+        assert crop_overlay.property("videoWidth") == 320
+        assert crop_overlay.property("videoHeight") == 240
+
+        # Apply crop
+        app_window._bridge.setCrop(40, 30, 200, 150)
+        qtbot.wait(100)
+
+        # After crop: overlay uses crop dimensions
+        assert crop_overlay.property("videoWidth") == 200
+        assert crop_overlay.property("videoHeight") == 150
+
+    def test_stacked_crop_translates_to_source_coordinates(self, app_window, qtbot, test_video):
+        """Drawing a crop on a cropped view produces correct source coordinates."""
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(200)
+
+        # First crop: (40, 30, 200, 150) in source coords
+        app_window._bridge.setCrop(40, 30, 200, 150)
+        qtbot.wait(100)
+
+        # Simulate applying a second crop at (20, 10, 100, 80)
+        # relative to the cropped view. In source coords this should be
+        # (40+20, 30+10, 100, 80) = (60, 40, 100, 80)
+        crop_overlay = app_window.findChild(QObject, "cropOverlay")
+        crop_overlay.cropApplied.emit(20, 10, 100, 80)
+        qtbot.wait(100)
+
+        # Verify the crop in the EditSpec is in source coordinates
+        crop_rect = app_window._bridge.cropRect
+        assert crop_rect["x"] == 60
+        assert crop_rect["y"] == 40
+        assert crop_rect["width"] == 100
+        assert crop_rect["height"] == 80
+
+    def test_undo_stacked_crop_restores_previous(self, app_window, qtbot, test_video):
+        """Undoing a stacked crop restores the previous crop, not full frame."""
+        app_window._bridge.openFile(str(test_video))
+        qtbot.wait(200)
+
+        # First crop
+        app_window._bridge.setCrop(40, 30, 200, 150)
+        qtbot.wait(100)
+
+        # Second crop (stacked, in source coords for simplicity)
+        app_window._bridge.setCrop(60, 40, 100, 80)
+        qtbot.wait(100)
+
+        # Undo → back to first crop
+        app_window._bridge.undo()
+        qtbot.wait(100)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+        assert video_area.property("cropActive") is True
+        crop_rect = app_window._bridge.cropRect
+        assert crop_rect["x"] == 40
+        assert crop_rect["y"] == 30
+        assert crop_rect["width"] == 200
+        assert crop_rect["height"] == 150
+
+        # Undo again → no crop
+        app_window._bridge.undo()
+        qtbot.wait(100)
+        assert video_area.property("cropActive") is False
 
     def test_crop_preview_screenshot(self, app_window, qtbot, test_video, capture_screenshot):
         """Visual verification: crop preview clips the video correctly."""

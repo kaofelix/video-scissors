@@ -30,10 +30,10 @@ Rectangle {
     readonly property var activeCrop: session.cropRect
 
     // The region we want to display: crop rect when active, full frame otherwise
-    readonly property int displayRegionX: root.cropActive ? activeCrop.x : 0
-    readonly property int displayRegionY: root.cropActive ? activeCrop.y : 0
-    readonly property int displayRegionW: root.cropActive ? activeCrop.width : sourceWidth
-    readonly property int displayRegionH: root.cropActive ? activeCrop.height : sourceHeight
+    readonly property int displayRegionX: root.cropActive && activeCrop ? activeCrop.x : 0
+    readonly property int displayRegionY: root.cropActive && activeCrop ? activeCrop.y : 0
+    readonly property int displayRegionW: root.cropActive && activeCrop ? activeCrop.width : sourceWidth
+    readonly property int displayRegionH: root.cropActive && activeCrop ? activeCrop.height : sourceHeight
 
     Item {
         id: clipContainer
@@ -119,18 +119,22 @@ Rectangle {
         }
     }
 
-    // Crop overlay - only when no crop is applied yet
+    // Crop overlay - works in source coords when no crop, or in crop-relative
+    // coords when a crop is active (overlay dimensions match visible region).
     CropOverlay {
         id: cropOverlay
         objectName: "cropOverlay"
         anchors.fill: parent
-        visible: session.hasVideo && !root.cropActive
-        videoWidth: session.videoWidth
-        videoHeight: session.videoHeight
+        visible: session.hasVideo
+        videoWidth: root.displayRegionW
+        videoHeight: root.displayRegionH
         videoRevision: session.workingVideoRevision
 
         onCropApplied: function(x, y, width, height) {
-            session.setCrop(x, y, width, height)
+            // Translate crop-relative coordinates to source coordinates
+            var sourceX = root.displayRegionX + x
+            var sourceY = root.displayRegionY + y
+            session.setCrop(sourceX, sourceY, width, height)
             clear()
         }
 
