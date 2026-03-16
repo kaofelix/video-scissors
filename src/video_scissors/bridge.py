@@ -122,6 +122,22 @@ class SessionBridge(QObject):
         """True if a crop is set."""
         return self._session.document.edit_spec.crop is not None
 
+    @Property(int, notify=editSpecChanged)
+    def displayWidth(self) -> int:
+        """Width for display: crop width if cropped, source width otherwise."""
+        crop = self._session.document.edit_spec.crop
+        if crop is not None:
+            return crop.width
+        return self._session.video_width
+
+    @Property(int, notify=editSpecChanged)
+    def displayHeight(self) -> int:
+        """Height for display: crop height if cropped, source height otherwise."""
+        crop = self._session.document.edit_spec.crop
+        if crop is not None:
+            return crop.height
+        return self._session.video_height
+
     @Property(float, notify=editSpecChanged)
     def effectiveDurationMs(self) -> float:
         """Duration after cuts applied, in milliseconds."""
@@ -296,8 +312,12 @@ class SessionBridge(QObject):
         if video_path is None or frame_count <= 0 or revision != current_revision:
             return
 
+        crop = self._session.document.edit_spec.crop
+
         def extract_and_emit() -> None:
-            frames = self._thumbnail_extractor.extract(video_path, frame_count, thumb_height)
+            frames = self._thumbnail_extractor.extract(
+                video_path, frame_count, thumb_height, crop=crop
+            )
             if revision != self._session.working_video_revision:
                 return
             urls = [path.as_uri() for path in frames]

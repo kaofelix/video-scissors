@@ -47,12 +47,24 @@ Item {
 
     implicitHeight: 44
 
-    // Request thumbnails when layout parameters change
+    // Request thumbnails when layout or video content changes
     onFrameCountChanged: {
         requestThumbnails()
     }
 
     onVideoRevisionChanged: {
+        thumbnailUrls = []
+        requestThumbnails()
+    }
+
+    // Re-request when display dimensions change (e.g., crop applied/removed)
+    // even if frameCount stays the same (same aspect ratio crop)
+    onVideoWidthChanged: {
+        thumbnailUrls = []
+        requestThumbnails()
+    }
+
+    onVideoHeightChanged: {
         thumbnailUrls = []
         requestThumbnails()
     }

@@ -5,9 +5,13 @@ logic and FFmpeg implementation details. Application code depends on
 these abstractions, not on FFmpeg directly.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
+
+from video_scissors.document import CropRect
 
 # --- Data Types ---
 
@@ -110,6 +114,7 @@ class ThumbnailExtractorProtocol(Protocol):
         video_path: Path,
         frame_count: int,
         thumb_height: int,
+        crop: CropRect | None = None,
     ) -> list[Path]:
         """Extract frames from video, evenly distributed across duration."""
         ...

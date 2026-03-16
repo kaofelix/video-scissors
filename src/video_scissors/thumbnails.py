@@ -4,9 +4,13 @@ Extracts frames from video files for timeline display.
 Uses in-memory caching to avoid re-extraction during a session.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import av
+
+from video_scissors.document import CropRect
 
 
 class ThumbnailExtractor:
@@ -27,6 +31,7 @@ class ThumbnailExtractor:
         video_path: Path,
         frame_count: int,
         thumb_height: int,
+        crop: CropRect | None = None,
     ) -> list[Path]:
         """Extract frames from video, evenly distributed across duration.
 
@@ -36,6 +41,7 @@ class ThumbnailExtractor:
             video_path: Path to the video file
             frame_count: Number of frames to extract
             thumb_height: Height of thumbnails (width calculated from aspect ratio)
+            crop: Optional crop region to apply before resizing
 
         Returns:
             List of paths to extracted JPEG frames, or empty list on error
@@ -46,14 +52,15 @@ class ThumbnailExtractor:
         if not video_path.exists():
             return []
 
-        # Check in-memory cache
-        cache_key = (str(video_path), frame_count, thumb_height)
+        # Check in-memory cache (crop is part of the key)
+        crop_key = (crop.x, crop.y, crop.width, crop.height) if crop else None
+        cache_key = (str(video_path), frame_count, thumb_height, crop_key)
         if cache_key in self._cache:
             return self._cache[cache_key]
 
         # Extract frames
         try:
-            frames = self._extract_frames(video_path, frame_count, thumb_height)
+            frames = self._extract_frames(video_path, frame_count, thumb_height, crop)
             self._cache[cache_key] = frames
             return frames
         except Exception:
@@ -64,6 +71,7 @@ class ThumbnailExtractor:
         video_path: Path,
         frame_count: int,
         thumb_height: int,
+        crop: CropRect | None = None,
     ) -> list[Path]:
         """Extract frames using PyAV.
 
@@ -71,14 +79,15 @@ class ThumbnailExtractor:
         This is more reliable than seeking, which only works with keyframes.
         """
         # Create subdirectory for this extraction
-        subdir = self.cache_dir / f"{video_path.stem}_{frame_count}_{thumb_height}"
+        crop_suffix = f"_crop{crop.x}_{crop.y}_{crop.width}_{crop.height}" if crop else ""
+        subdir = self.cache_dir / f"{video_path.stem}_{frame_count}_{thumb_height}{crop_suffix}"
         subdir.mkdir(parents=True, exist_ok=True)
 
         container = av.open(str(video_path))
         stream = container.streams.video[0]
 
-        # Calculate thumbnail dimensions
-        aspect_ratio = stream.width / stream.height
+        # Calculate thumbnail dimensions from crop region or full frame
+        aspect_ratio = crop.width / crop.height if crop else stream.width / stream.height
         thumb_width = int(thumb_height * aspect_ratio)
 
         # Calculate which frame indices to extract
@@ -105,8 +114,10 @@ class ThumbnailExtractor:
             if frame_idx >= target_indices[next_target_idx]:
                 frame_path = subdir / f"frame_{next_target_idx:04d}.jpg"
 
-                # Convert to PIL and resize
+                # Convert to PIL, optionally crop, then resize
                 img = frame.to_image()
+                if crop:
+                    img = img.crop((crop.x, crop.y, crop.x + crop.width, crop.y + crop.height))
                 img = img.resize((thumb_width, thumb_height))
 
                 # Save as JPEG

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from video_scissors.document import CropRect
 from video_scissors.thumbnails import ThumbnailExtractor
 
 
@@ -83,3 +84,58 @@ class TestThumbnailExtractor:
         frames = extractor.extract(tmp_path / "nonexistent.mp4", frame_count=5, thumb_height=60)
 
         assert frames == []
+
+
+class TestThumbnailExtractorCrop:
+    """Tests for cropped thumbnail extraction."""
+
+    def test_cropped_frame_has_crop_aspect_ratio(self, test_video: Path, tmp_path: Path):
+        """Cropped thumbnails use the crop region's aspect ratio."""
+        # Test video is 320x240. Crop a 200x100 region (2:1 aspect).
+        crop = CropRect(x=40, y=30, width=200, height=100)
+        extractor = ThumbnailExtractor(cache_dir=tmp_path)
+        frames = extractor.extract(test_video, frame_count=1, thumb_height=60, crop=crop)
+
+        assert len(frames) == 1
+        img = Image.open(frames[0])
+        assert img.height == 60
+        # 2:1 aspect at 60px height -> 120px wide
+        assert img.width == 120
+
+    def test_cropped_frames_differ_from_uncropped(self, test_video: Path, tmp_path: Path):
+        """Cropped and uncropped extractions produce different images."""
+        crop = CropRect(x=40, y=30, width=200, height=100)
+        extractor = ThumbnailExtractor(cache_dir=tmp_path)
+
+        uncropped = extractor.extract(test_video, frame_count=1, thumb_height=60)
+        cropped = extractor.extract(test_video, frame_count=1, thumb_height=60, crop=crop)
+
+        # Different cache entries (different paths)
+        assert uncropped[0] != cropped[0]
+
+        # Different image dimensions
+        img_uncropped = Image.open(uncropped[0])
+        img_cropped = Image.open(cropped[0])
+        assert img_uncropped.width != img_cropped.width
+
+    def test_different_crops_produce_different_cache_entries(
+        self, test_video: Path, tmp_path: Path
+    ):
+        """Different crop rects are cached separately."""
+        crop1 = CropRect(x=0, y=0, width=160, height=120)
+        crop2 = CropRect(x=80, y=60, width=160, height=120)
+        extractor = ThumbnailExtractor(cache_dir=tmp_path)
+
+        frames1 = extractor.extract(test_video, frame_count=1, thumb_height=60, crop=crop1)
+        frames2 = extractor.extract(test_video, frame_count=1, thumb_height=60, crop=crop2)
+
+        assert frames1[0] != frames2[0]
+
+    def test_crop_none_same_as_no_crop(self, test_video: Path, tmp_path: Path):
+        """Passing crop=None behaves the same as omitting it."""
+        extractor = ThumbnailExtractor(cache_dir=tmp_path)
+
+        frames_default = extractor.extract(test_video, frame_count=1, thumb_height=60)
+        frames_none = extractor.extract(test_video, frame_count=1, thumb_height=60, crop=None)
+
+        assert frames_default == frames_none

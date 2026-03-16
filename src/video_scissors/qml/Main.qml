@@ -65,8 +65,8 @@ ApplicationWindow {
 
             position: videoArea.position
             duration: videoArea.duration
-            videoWidth: session.videoWidth
-            videoHeight: session.videoHeight
+            videoWidth: session.displayWidth
+            videoHeight: session.displayHeight
             videoRevision: session.workingVideoRevision
             markers: session.markers
             enabled: session.hasVideo && !videoArea.hasCrop

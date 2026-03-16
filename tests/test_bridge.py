@@ -6,6 +6,7 @@ from pathlib import Path
 from conftest import generate_test_video
 from video_scissors.bootstrap import create_session_bridge
 from video_scissors.bridge import SessionBridge
+from video_scissors.document import CropRect
 from video_scissors.services import EditResult
 from video_scissors.session import EditorSession
 
@@ -15,10 +16,16 @@ class FakeThumbnailExtractor:
 
     def __init__(self, frames: list[Path]):
         self.frames = frames
-        self.calls: list[tuple[Path, int, int]] = []
+        self.calls: list[tuple] = []
 
-    def extract(self, video_path: Path, frame_count: int, thumb_height: int) -> list[Path]:
-        self.calls.append((video_path, frame_count, thumb_height))
+    def extract(
+        self,
+        video_path: Path,
+        frame_count: int,
+        thumb_height: int,
+        crop: CropRect | None = None,
+    ) -> list[Path]:
+        self.calls.append((video_path, frame_count, thumb_height, crop))
         return self.frames
 
 
@@ -327,7 +334,29 @@ class TestBridgeWorkingVideoRevision:
         qtbot.waitUntil(lambda: len(signals) == 1, timeout=1000)
 
         assert signals == [[f"file://{fake_frame}"]]
-        assert extractor.calls == [(test_video, 3, 40)]
+        assert extractor.calls == [(test_video, 3, 40, None)]
+
+    def test_request_thumbnails_passes_crop_from_edit_spec(
+        self, test_video: Path, tmp_path: Path, qtbot
+    ):
+        """Thumbnail request passes the current crop to the extractor."""
+        session = EditorSession()
+        session.load(test_video)
+        session.set_crop(40, 30, 200, 150)
+
+        fake_frame = tmp_path / "frame.jpg"
+        fake_frame.write_text("not a real image")
+        extractor = FakeThumbnailExtractor([fake_frame])
+        bridge = make_bridge(session, thumbnail_extractor=extractor)
+
+        signals = []
+        bridge.thumbnailsReady.connect(lambda urls: signals.append(urls))
+
+        bridge.requestThumbnails(3, 40, bridge.workingVideoRevision)
+        qtbot.waitUntil(lambda: len(signals) == 1, timeout=1000)
+
+        expected_crop = CropRect(x=40, y=30, width=200, height=150)
+        assert extractor.calls == [(test_video, 3, 40, expected_crop)]
 
 
 def marker_times_from_bridge(markers: list) -> list[float]:
@@ -779,6 +808,38 @@ class TestEditSpecBridge:
         bridge.setCrop(10, 20, 100, 80)
 
         assert bridge.hasCrop is True
+
+    def test_display_dimensions_match_source_when_no_crop(self, test_video: Path):
+        """displayWidth/displayHeight return source dimensions with no crop."""
+        session = EditorSession()
+        session.load(test_video)  # 320x240
+        bridge = make_bridge(session)
+
+        assert bridge.displayWidth == 320
+        assert bridge.displayHeight == 240
+
+    def test_display_dimensions_match_crop_when_cropped(self, test_video: Path):
+        """displayWidth/displayHeight return crop dimensions when crop is set."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        bridge.setCrop(40, 30, 200, 150)
+
+        assert bridge.displayWidth == 200
+        assert bridge.displayHeight == 150
+
+    def test_display_dimensions_revert_on_undo(self, test_video: Path):
+        """displayWidth/displayHeight revert to source on undo."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        bridge.setCrop(40, 30, 200, 150)
+        bridge.undo()
+
+        assert bridge.displayWidth == 320
+        assert bridge.displayHeight == 240
 
     def test_undo_emits_edit_spec_changed(self, test_video: Path, qtbot):
         """Undo emits editSpecChanged when edit spec changes."""
