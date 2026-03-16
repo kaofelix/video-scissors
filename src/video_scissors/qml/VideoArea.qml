@@ -14,7 +14,16 @@ Rectangle {
     // Whether a crop from the EditSpec is actively clipping the video
     readonly property bool cropActive: session.document.editSpec.hasCrop
 
-    function play() { videoPlayer.play() }
+    function play() {
+        // If paused at the effective end, restart from the beginning
+        if (session.effectiveDurationMs > 0 && videoPlayer.duration > 0) {
+            var effectivePos = session.sourceToEffective(videoPlayer.position)
+            if (session.effectiveDurationMs - effectivePos < 100) {
+                videoPlayer.position = 0
+            }
+        }
+        videoPlayer.play()
+    }
     function pause() { videoPlayer.pause() }
 
     color: "#000000"
@@ -84,27 +93,42 @@ Rectangle {
 
             source: session.workingVideoUrl
 
-            // Auto-skip cut regions during playback.
-            // Only skip while actively playing — not during seeks or restarts,
-            // where intermediate position values could re-trigger the skip.
+            // Auto-skip cut regions and freeze at effective end.
+            // Only active while playing — not during seeks or restarts.
             onPositionChanged: {
                 if (videoPlayer.playbackState !== MediaPlayer.PlayingState) return
+
+                // Skip over cut regions
                 var cutRegions = session.document.editSpec.cutRegions
                 for (var i = 0; i < cutRegions.length; i++) {
                     var cut = cutRegions[i]
                     if (position >= cut.start && position < cut.end) {
-                        videoPlayer.position = cut.end
-                        break
+                        // If no effective content remains after this cut,
+                        // freeze here (last frame before the cut)
+                        if (session.sourceToEffective(cut.end) >= session.effectiveDurationMs) {
+                            videoPlayer.pause()
+                        } else {
+                            videoPlayer.position = cut.end
+                        }
+                        return
                     }
+                }
+
+                // Freeze near the natural end of the video
+                if (videoPlayer.duration > 0 && videoPlayer.duration - position < 100) {
+                    videoPlayer.pause()
                 }
             }
 
-            // Pre-seek to beginning when playback ends so the next play()
-            // starts cleanly from frame 0 (avoids the decoder being
-            // positioned at the end after an auto-skip).
+            // Backup: if the video enters StoppedState despite the
+            // pause-at-end logic, show the last effective frame.
             onPlaybackStateChanged: {
-                if (playbackState === MediaPlayer.StoppedState) {
-                    videoPlayer.position = 0
+                if (playbackState === MediaPlayer.StoppedState && session.hasVideo) {
+                    var lastEffectiveMs = Math.max(0, session.effectiveDurationMs - 50)
+                    var lastSourceMs = session.effectiveToSource(lastEffectiveMs)
+                    videoPlayer.position = lastSourceMs
+                    videoPlayer.play()
+                    videoPlayer.pause()
                 }
             }
 
