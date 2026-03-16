@@ -7,11 +7,12 @@ these abstractions, not on FFmpeg directly.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from video_scissors.document import CropRect
+from video_scissors.document import CropRect, EditSpec
 
 # --- Data Types ---
 
@@ -99,10 +100,16 @@ class ThumbnailService(Protocol):
 
 
 class ExportService(Protocol):
-    """Service for exporting the final video."""
+    """Service for rendering an EditSpec to a final output file."""
 
-    def export(self, source: Path, request: ExportRequest) -> Path:
-        """Export the video to the destination."""
+    def export(
+        self,
+        source: Path,
+        edit_spec: EditSpec,
+        output: Path,
+        on_progress: Callable[[float], None] | None = None,
+    ) -> None:
+        """Render edit_spec applied to source, write to output."""
         ...
 
 
