@@ -4,16 +4,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import av
+from PySide6.QtCore import QObject
+from PySide6.QtGui import QUndoStack
 
 from video_scissors.commands import (
     AddCutCommand,
     AddMarkerCommand,
     ClearMarkersCommand,
-    Command,
     MoveMarkerCommand,
     RemoveMarkerCommand,
     SetCropCommand,
-    SnapshotCommand,
+    SetWorkingVideoCommand,
 )
 from video_scissors.document import Document, Marker, effective_duration
 
@@ -36,7 +37,7 @@ class SessionSnapshot:
     document: Document = field(default_factory=Document)
 
 
-class EditorSession:
+class EditorSession(QObject):
     """Manages the editing session state.
 
     Tracks the source video (original file) and working video
@@ -47,13 +48,18 @@ class EditorSession:
     Cut markers are first-class concepts that participate in undo/redo.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
         self._source_video: Path | None = None
         self._current: SessionSnapshot | None = None
-        self._undo_stack: list[Command] = []
-        self._redo_stack: list[Command] = []
+        self._qt_undo_stack = QUndoStack(self)
         self._working_video_revision: int = 0
-        self._last_command: Command | None = None
+        self._last_command: object | None = None
+
+    @property
+    def undo_stack(self) -> QUndoStack:
+        """Qt undo stack for undo/redo signals and actions."""
+        return self._qt_undo_stack
 
     @property
     def source_video(self) -> Path | None:
@@ -101,15 +107,15 @@ class EditorSession:
     @property
     def can_undo(self) -> bool:
         """True if there are edits that can be undone."""
-        return len(self._undo_stack) > 0
+        return self._qt_undo_stack.canUndo()
 
     @property
     def can_redo(self) -> bool:
         """True if there are undone edits that can be redone."""
-        return len(self._redo_stack) > 0
+        return self._qt_undo_stack.canRedo()
 
     @property
-    def last_command(self) -> "Command | None":
+    def last_command(self) -> object | None:
         """Most recently executed command (for signal emission decisions)."""
         return self._last_command
 
@@ -150,8 +156,7 @@ class EditorSession:
     def load(self, path: Path) -> None:
         """Load a video file, setting it as both source and working."""
         self._source_video = path
-        self._undo_stack.clear()
-        self._redo_stack.clear()
+        self._qt_undo_stack.clear()
         video_state = self._build_working_state(path)
         self._current = SessionSnapshot(video=video_state, document=Document())
         self._bump_working_video_revision()
@@ -179,18 +184,16 @@ class EditorSession:
         """Advance the working-video revision after a state change."""
         self._working_video_revision += 1
 
-    def execute(self, command: "Command") -> None:
-        """Execute a command and push it to the undo stack."""
+    def _set_document(self, document: Document) -> None:
+        """Update the document (called by commands)."""
         if self._current is None:
             return
-        new_document = command.execute(self._current.document)
-        self._current = SessionSnapshot(
-            video=self._current.video,
-            document=new_document,
-        )
-        self._undo_stack.append(command)
-        self._redo_stack.clear()
-        self._last_command = command
+        self._current = SessionSnapshot(video=self._current.video, document=document)
+
+    def _restore_snapshot(self, snapshot: SessionSnapshot) -> None:
+        """Restore a complete snapshot (called by SetWorkingVideoCommand)."""
+        self._current = snapshot
+        self._bump_working_video_revision()
 
     def set_working_video(self, path: Path) -> None:
         """Update the working video path after an edit."""
@@ -200,27 +203,21 @@ class EditorSession:
         video_state = self._build_working_state(path)
         # Preserve current document when video changes
         new_snapshot = SessionSnapshot(video=video_state, document=self._current.document)
-        self._current = new_snapshot
-        # Create snapshot command for undo
-        cmd = SnapshotCommand(previous_snapshot=previous_snapshot, new_snapshot=new_snapshot)
-        self._undo_stack.append(cmd)
-        self._redo_stack.clear()
-        self._last_command = cmd
-        self._bump_working_video_revision()
+        # Use QUndoStack for proper ordering
+        cmd = SetWorkingVideoCommand(self, previous_snapshot, new_snapshot)
+        self._qt_undo_stack.push(cmd)
 
     def add_cut(self, start: float, end: float) -> None:
         """Add a cut region (non-destructive). Times in source coordinates."""
         if self._current is None:
             return
-        self.execute(AddCutCommand(start=start, end=end))
+        self._qt_undo_stack.push(AddCutCommand(self, start, end))
 
     def set_crop(self, x: int, y: int, width: int, height: int) -> None:
         """Set crop region (non-destructive). Coordinates in source pixels."""
         if self._current is None:
             return
-        previous_crop = self._current.document.edit_spec.crop
-        cmd = SetCropCommand(x=x, y=y, width=width, height=height, previous_crop=previous_crop)
-        self.execute(cmd)
+        self._qt_undo_stack.push(SetCropCommand(self, x, y, width, height))
 
     def add_marker(self, time: float) -> Marker | None:
         """Add a cut marker at the specified time in seconds.
@@ -233,7 +230,7 @@ class EditorSession:
         if any(m.time == time for m in self._current.document.markers):
             return None
         marker = Marker.create(time)
-        self.execute(AddMarkerCommand(marker=marker))
+        self._qt_undo_stack.push(AddMarkerCommand(self, marker))
         return marker
 
     def remove_marker(self, marker_id: str) -> None:
@@ -243,14 +240,14 @@ class EditorSession:
         marker = next((m for m in self._current.document.markers if m.id == marker_id), None)
         if marker is None:
             return
-        self.execute(RemoveMarkerCommand(marker=marker))
+        self._qt_undo_stack.push(RemoveMarkerCommand(self, marker))
 
     def clear_markers(self) -> None:
         """Remove all cut markers."""
         if self._current is None or not self._current.document.markers:
             return
         markers = self._current.document.markers
-        self.execute(ClearMarkersCommand(markers=markers))
+        self._qt_undo_stack.push(ClearMarkersCommand(self, markers))
 
     def move_marker(self, marker_id: str, new_time: float) -> None:
         """Move a marker to a new time by its ID."""
@@ -259,8 +256,7 @@ class EditorSession:
         marker = next((m for m in self._current.document.markers if m.id == marker_id), None)
         if marker is None:
             return
-        cmd = MoveMarkerCommand(marker_id=marker_id, old_time=marker.time, new_time=new_time)
-        self.execute(cmd)
+        self._qt_undo_stack.push(MoveMarkerCommand(self, marker_id, marker.time, new_time))
 
     def apply_cut(self, start: float, end: float, output_path: Path) -> None:
         """Apply a cut and adjust markers accordingly.
@@ -300,62 +296,29 @@ class EditorSession:
             video=video_state,
             document=new_document,
         )
-        self._current = new_snapshot
-        # Create snapshot command for undo
-        cmd = SnapshotCommand(previous_snapshot=previous_snapshot, new_snapshot=new_snapshot)
-        self._undo_stack.append(cmd)
-        self._redo_stack.clear()
-        self._last_command = cmd
-        self._bump_working_video_revision()
+        # Use QUndoStack for proper ordering
+        cmd = SetWorkingVideoCommand(self, previous_snapshot, new_snapshot)
+        self._qt_undo_stack.push(cmd)
 
     def undo(self) -> None:
         """Undo the last edit, restoring the previous state."""
         if not self.can_undo or self._current is None:
             return
-        cmd = self._undo_stack.pop()
-
-        if isinstance(cmd, SnapshotCommand):
-            # Legacy: restore entire snapshot (for working video changes)
-            self._current = cmd.previous_snapshot
-            self._bump_working_video_revision()
-        else:
-            # Document-only command
-            new_document = cmd.undo(self._current.document)
-            self._current = SessionSnapshot(
-                video=self._current.video,
-                document=new_document,
-            )
-
-        self._redo_stack.append(cmd)
+        self._qt_undo_stack.undo()
         self._last_command = None
 
     def redo(self) -> None:
         """Redo the last undone edit."""
         if not self.can_redo or self._current is None:
             return
-        cmd = self._redo_stack.pop()
-
-        if isinstance(cmd, SnapshotCommand):
-            # Legacy: restore entire snapshot (for working video changes)
-            self._current = cmd.new_snapshot
-            self._bump_working_video_revision()
-        else:
-            # Document-only command
-            new_document = cmd.execute(self._current.document)
-            self._current = SessionSnapshot(
-                video=self._current.video,
-                document=new_document,
-            )
-
-        self._undo_stack.append(cmd)
-        self._last_command = cmd
+        self._qt_undo_stack.redo()
+        self._last_command = None
 
     def close(self) -> None:
         """Close the session, clearing all state."""
         had_video = self._source_video is not None or self._current is not None
         self._source_video = None
         self._current = None
-        self._undo_stack.clear()
-        self._redo_stack.clear()
+        self._qt_undo_stack.clear()
         if had_video:
             self._bump_working_video_revision()

@@ -3,9 +3,64 @@
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import QObject
+from PySide6.QtGui import QUndoStack
 
 from video_scissors.document import EditSpec
 from video_scissors.session import EditorSession, Marker
+
+
+class TestQUndoStackIntegration:
+    """Tests for QUndoStack-based undo/redo."""
+
+    def test_session_is_qobject(self):
+        """EditorSession is a QObject (required for QUndoStack ownership)."""
+        session = EditorSession()
+        assert isinstance(session, QObject)
+
+    def test_session_has_undo_stack(self, test_video: Path):
+        """EditorSession exposes QUndoStack via undo_stack property."""
+        session = EditorSession()
+        session.load(test_video)
+
+        assert hasattr(session, "undo_stack")
+        assert isinstance(session.undo_stack, QUndoStack)
+
+    def test_undo_stack_can_undo_changed_signal(self, test_video: Path, qtbot):
+        """QUndoStack emits canUndoChanged when undo state changes."""
+        session = EditorSession()
+        session.load(test_video)
+
+        with qtbot.waitSignal(session.undo_stack.canUndoChanged, timeout=1000):
+            session.add_marker(1.0)
+
+    def test_undo_stack_can_redo_changed_signal(self, test_video: Path, qtbot):
+        """QUndoStack emits canRedoChanged when redo state changes."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.0)
+
+        with qtbot.waitSignal(session.undo_stack.canRedoChanged, timeout=1000):
+            session.undo()
+
+    def test_undo_text_available(self, test_video: Path):
+        """undoText describes the operation to undo."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.5)
+
+        # Should have some descriptive text
+        assert session.undo_stack.undoText() != ""
+
+    def test_redo_text_available(self, test_video: Path):
+        """redoText describes the operation to redo."""
+        session = EditorSession()
+        session.load(test_video)
+        session.add_marker(1.5)
+        session.undo()
+
+        # Should have some descriptive text
+        assert session.undo_stack.redoText() != ""
 
 
 class TestMarker:
