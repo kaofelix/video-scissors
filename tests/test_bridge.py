@@ -314,6 +314,20 @@ class TestBridgeContentRevision:
 
         assert bridge.contentRevision > rev_after_load
 
+    def test_display_dimensions_update_on_file_open(self, test_video: Path):
+        """displayWidth/displayHeight reflect video dimensions after file open."""
+        session = EditorSession()
+        bridge = make_bridge(session)
+
+        # Before loading: zero dimensions
+        assert bridge.displayWidth == 0
+        assert bridge.displayHeight == 0
+
+        bridge.openFile(str(test_video))  # 320x240
+
+        assert bridge.displayWidth == 320
+        assert bridge.displayHeight == 240
+
     def test_request_thumbnails_ignores_stale_revision(
         self, test_video: Path, tmp_path: Path, qtbot
     ):

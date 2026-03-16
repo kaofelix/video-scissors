@@ -141,7 +141,7 @@ class SessionBridge(QObject):
         """True if a crop is set."""
         return self._session.document.edit_spec.crop is not None
 
-    @Property(int, notify=editSpecChanged)
+    @Property(int, notify=contentRevisionChanged)
     def displayWidth(self) -> int:
         """Width for display: crop width if cropped, source width otherwise."""
         crop = self._session.document.edit_spec.crop
@@ -149,7 +149,7 @@ class SessionBridge(QObject):
             return crop.width
         return self._session.video_width
 
-    @Property(int, notify=editSpecChanged)
+    @Property(int, notify=contentRevisionChanged)
     def displayHeight(self) -> int:
         """Height for display: crop height if cropped, source height otherwise."""
         crop = self._session.document.edit_spec.crop
