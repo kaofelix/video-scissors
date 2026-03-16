@@ -84,16 +84,27 @@ Rectangle {
 
             source: session.workingVideoUrl
 
-            // Auto-skip cut regions during playback
+            // Auto-skip cut regions during playback.
+            // Only skip while actively playing — not during seeks or restarts,
+            // where intermediate position values could re-trigger the skip.
             onPositionChanged: {
+                if (videoPlayer.playbackState !== MediaPlayer.PlayingState) return
                 var cutRegions = session.document.editSpec.cutRegions
                 for (var i = 0; i < cutRegions.length; i++) {
                     var cut = cutRegions[i]
-                    // If inside a cut region, skip to end of cut
                     if (position >= cut.start && position < cut.end) {
                         videoPlayer.position = cut.end
                         break
                     }
+                }
+            }
+
+            // Pre-seek to beginning when playback ends so the next play()
+            // starts cleanly from frame 0 (avoids the decoder being
+            // positioned at the end after an auto-skip).
+            onPlaybackStateChanged: {
+                if (playbackState === MediaPlayer.StoppedState) {
+                    videoPlayer.position = 0
                 }
             }
 

@@ -1,7 +1,7 @@
 .PHONY: run test test-gui lint typecheck check
 
 run:
-	uv run video-scissors
+	uv run video-scissors $(FILE)
 
 test:
 	QT_QPA_PLATFORM=offscreen uv run pytest
