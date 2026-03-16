@@ -93,39 +93,28 @@ Rectangle {
 
             source: session.workingVideoUrl
 
-            // Auto-skip cut regions and freeze at effective end.
+            // Auto-skip cut regions during playback.
             // Only active while playing — not during seeks or restarts.
             onPositionChanged: {
                 if (videoPlayer.playbackState !== MediaPlayer.PlayingState) return
-
-                // Skip over cut regions
                 var cutRegions = session.document.editSpec.cutRegions
                 for (var i = 0; i < cutRegions.length; i++) {
                     var cut = cutRegions[i]
                     if (position >= cut.start && position < cut.end) {
-                        // If no effective content remains after this cut,
-                        // freeze here (last frame before the cut)
-                        if (session.sourceToEffective(cut.end) >= session.effectiveDurationMs) {
-                            videoPlayer.pause()
-                        } else {
-                            videoPlayer.position = cut.end
-                        }
+                        videoPlayer.position = cut.end
                         return
                     }
                 }
-
-                // Freeze near the natural end of the video
-                if (videoPlayer.duration > 0 && videoPlayer.duration - position < 100) {
-                    videoPlayer.pause()
-                }
             }
 
-            // Backup: if the video enters StoppedState despite the
-            // pause-at-end logic, show the last effective frame.
+            // When the video reaches the end, freeze on the last effective
+            // frame instead of showing a black screen. The play-pause trick
+            // renders the frame at the seeked position.
             onPlaybackStateChanged: {
                 if (playbackState === MediaPlayer.StoppedState && session.hasVideo) {
-                    var lastEffectiveMs = Math.max(0, session.effectiveDurationMs - 50)
-                    var lastSourceMs = session.effectiveToSource(lastEffectiveMs)
+                    var lastSourceMs = session.effectiveToSource(
+                        Math.max(0, session.effectiveDurationMs - 1)
+                    )
                     videoPlayer.position = lastSourceMs
                     videoPlayer.play()
                     videoPlayer.pause()
