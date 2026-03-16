@@ -39,6 +39,7 @@ Item {
     // Public properties
     property real duration: 0           // Total duration in ms
     property var markers: []            // Marker objects {id, time}
+    property var cutRegions: []         // Cut regions {start, end} in ms (from parent)
     property bool enabled: true
     property int topRadius: 6           // Top corner radius
     property int bottomRadius: 0        // Bottom corner radius (0 when joined)
@@ -200,7 +201,7 @@ Item {
             // Cut region overlays (red hatching to show removed sections)
             // These are non-interactive visual indicators
             Repeater {
-                model: session.document.editSpec.cutRegions
+                model: root.cutRegions
 
                 Rectangle {
                     id: cutRegionRect

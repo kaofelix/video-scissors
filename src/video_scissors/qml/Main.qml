@@ -69,6 +69,7 @@ ApplicationWindow {
             videoHeight: session.displayHeight
             contentRevision: session.contentRevision
             markers: session.document.markers
+            cutRegions: session.document.editSpec.cutRegions
             enabled: session.hasVideo && !videoArea.hasCrop
             focus: session.hasVideo && !videoArea.hasCrop
 

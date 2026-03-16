@@ -29,6 +29,7 @@ Item {
 
     // Marker properties
     property var markers: []
+    property var cutRegions: []        // Cut regions {start, end} in ms
 
     // State
     property bool enabled: true
@@ -85,6 +86,7 @@ Item {
 
             duration: root.duration
             markers: root.markers
+            cutRegions: root.cutRegions
             enabled: root.enabled
             topRadius: root.cornerRadius
             bottomRadius: 0  // Square where it meets scrubber
@@ -126,6 +128,7 @@ Item {
             videoWidth: root.videoWidth
             videoHeight: root.videoHeight
             contentRevision: root.contentRevision
+            cutRegions: root.cutRegions
             enabled: root.enabled
             topRadius: 0  // Square where it meets CutBar
             bottomRadius: root.cornerRadius
