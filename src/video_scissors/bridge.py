@@ -24,6 +24,7 @@ class SessionBridge(QObject):
     videoChanged = Signal()
     markersChanged = Signal()
     editSpecChanged = Signal()
+    undoStateChanged = Signal()
     thumbnailsReady = Signal(list)  # List of file:// URLs
 
     def __init__(
@@ -38,6 +39,10 @@ class SessionBridge(QObject):
         self._thumbnail_extractor = thumbnail_extractor
         self._edit_service = edit_service
         self._suggested_position_ms: float = 0
+
+        # Connect QUndoStack signals to bridge signal for QML canUndo/canRedo
+        self._session.undo_stack.canUndoChanged.connect(self.undoStateChanged)
+        self._session.undo_stack.canRedoChanged.connect(self.undoStateChanged)
 
     @Property(bool, notify=videoChanged)
     def hasVideo(self) -> bool:
@@ -71,12 +76,12 @@ class SessionBridge(QObject):
         """Frame rate of the loaded video in fps."""
         return self._session.video_frame_rate
 
-    @Property(bool, notify=videoChanged)
+    @Property(bool, notify=undoStateChanged)
     def canUndo(self) -> bool:
         """True if there are edits that can be undone."""
         return self._session.can_undo
 
-    @Property(bool, notify=videoChanged)
+    @Property(bool, notify=undoStateChanged)
     def canRedo(self) -> bool:
         """True if there are undone edits that can be redone."""
         return self._session.can_redo
@@ -158,11 +163,13 @@ class SessionBridge(QObject):
     def undo(self, currentPositionMs: float = 0) -> None:
         """Undo the last edit."""
         if self._session.can_undo:
+            old_video = self._session.working_video
             old_markers = self._session.markers
             old_edit_spec = self._session.document.edit_spec
             self._session.undo()
-            self._suggested_position_ms = currentPositionMs
-            self.videoChanged.emit()
+            if self._session.working_video != old_video:
+                self._suggested_position_ms = currentPositionMs
+                self.videoChanged.emit()
             if self._session.markers != old_markers:
                 self.markersChanged.emit()
             if self._session.document.edit_spec != old_edit_spec:
@@ -172,11 +179,13 @@ class SessionBridge(QObject):
     def redo(self, currentPositionMs: float = 0) -> None:
         """Redo the last undone edit."""
         if self._session.can_redo:
+            old_video = self._session.working_video
             old_markers = self._session.markers
             old_edit_spec = self._session.document.edit_spec
             self._session.redo()
-            self._suggested_position_ms = currentPositionMs
-            self.videoChanged.emit()
+            if self._session.working_video != old_video:
+                self._suggested_position_ms = currentPositionMs
+                self.videoChanged.emit()
             if self._session.markers != old_markers:
                 self.markersChanged.emit()
             if self._session.document.edit_spec != old_edit_spec:
@@ -225,7 +234,6 @@ class SessionBridge(QObject):
             return
         self._session.add_cut(start, end)
         self.editSpecChanged.emit()
-        self.videoChanged.emit()  # For canUndo/canRedo bindings
 
     @Slot(int, int, int, int)
     def setCrop(self, x: int, y: int, width: int, height: int) -> None:
@@ -234,7 +242,6 @@ class SessionBridge(QObject):
             return
         self._session.set_crop(x, y, width, height)
         self.editSpecChanged.emit()
-        self.videoChanged.emit()  # For canUndo/canRedo bindings
 
     @Slot(int, int, int, int, float)
     def applyCrop(

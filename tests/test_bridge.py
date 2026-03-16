@@ -566,6 +566,102 @@ class TestBridgeSuggestedPosition:
         assert bridge.suggestedPositionMs == 500
 
 
+class TestBridgeUndoStateSignal:
+    """Tests for proper undo state signaling via QUndoStack connection."""
+
+    def test_undo_state_changed_signal_exists(self, test_video: Path):
+        """Bridge has an undoStateChanged signal."""
+        session = EditorSession()
+        bridge = make_bridge(session)
+
+        # Signal should exist and be connectable
+        signals = []
+        bridge.undoStateChanged.connect(lambda: signals.append(True))
+
+    def test_add_marker_emits_undo_state_changed(self, test_video: Path):
+        """Adding a marker emits undoStateChanged so QML updates canUndo."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        signals = []
+        bridge.undoStateChanged.connect(lambda: signals.append(True))
+
+        bridge.addMarker(1.5)
+
+        assert len(signals) >= 1
+
+    def test_add_cut_emits_undo_state_changed(self, test_video: Path):
+        """Adding a cut emits undoStateChanged."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        signals = []
+        bridge.undoStateChanged.connect(lambda: signals.append(True))
+
+        bridge.addCut(1.0, 2.0)
+
+        assert len(signals) >= 1
+
+    def test_add_cut_does_not_emit_video_changed(self, test_video: Path):
+        """addCut should not emit videoChanged - it doesn't change the video."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        signals = []
+        bridge.videoChanged.connect(lambda: signals.append(True))
+
+        bridge.addCut(1.0, 2.0)
+
+        assert len(signals) == 0
+
+    def test_set_crop_does_not_emit_video_changed(self, test_video: Path):
+        """setCrop should not emit videoChanged - it doesn't change the video."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        signals = []
+        bridge.videoChanged.connect(lambda: signals.append(True))
+
+        bridge.setCrop(10, 20, 100, 80)
+
+        assert len(signals) == 0
+
+    def test_undo_marker_does_not_emit_video_changed(self, test_video: Path):
+        """Undoing a marker-only operation should not emit videoChanged."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+        bridge.addMarker(1.5)
+
+        signals = []
+        bridge.videoChanged.connect(lambda: signals.append(True))
+
+        bridge.undo()
+
+        assert len(signals) == 0
+
+    def test_undo_video_change_emits_video_changed(self, test_video: Path, tmp_path: Path):
+        """Undoing a video change (SetWorkingVideo) should emit videoChanged."""
+        session = EditorSession()
+        session.load(test_video)
+        bridge = make_bridge(session)
+
+        edited = tmp_path / "edited.mp4"
+        generate_test_video(edited, duration=1.0)
+        bridge.setWorkingVideo(str(edited))
+
+        signals = []
+        bridge.videoChanged.connect(lambda: signals.append(True))
+
+        bridge.undo()
+
+        assert len(signals) == 1
+
+
 class TestEditSpecBridge:
     """Tests for non-destructive EditSpec operations via bridge."""
 
