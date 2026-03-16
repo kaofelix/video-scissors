@@ -54,7 +54,6 @@ class EditorSession(QObject):
         self._current: SessionSnapshot | None = None
         self._qt_undo_stack = QUndoStack(self)
         self._working_video_revision: int = 0
-        self._last_command: object | None = None
 
     @property
     def undo_stack(self) -> QUndoStack:
@@ -113,11 +112,6 @@ class EditorSession(QObject):
     def can_redo(self) -> bool:
         """True if there are undone edits that can be redone."""
         return self._qt_undo_stack.canRedo()
-
-    @property
-    def last_command(self) -> object | None:
-        """Most recently executed command (for signal emission decisions)."""
-        return self._last_command
 
     @property
     def document(self) -> Document:
@@ -305,14 +299,12 @@ class EditorSession(QObject):
         if not self.can_undo or self._current is None:
             return
         self._qt_undo_stack.undo()
-        self._last_command = None
 
     def redo(self) -> None:
         """Redo the last undone edit."""
         if not self.can_redo or self._current is None:
             return
         self._qt_undo_stack.redo()
-        self._last_command = None
 
     def close(self) -> None:
         """Close the session, clearing all state."""
