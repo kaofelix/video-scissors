@@ -14,16 +14,7 @@ Rectangle {
     // Whether a crop from the EditSpec is actively clipping the video
     readonly property bool cropActive: session.document.editSpec.hasCrop
 
-    function play() {
-        // If paused at the effective end, restart from the beginning
-        if (session.effectiveDurationMs > 0 && videoPlayer.duration > 0) {
-            var effectivePos = session.sourceToEffective(videoPlayer.position)
-            if (session.effectiveDurationMs - effectivePos < 100) {
-                videoPlayer.position = 0
-            }
-        }
-        videoPlayer.play()
-    }
+    function play() { videoPlayer.play() }
     function pause() { videoPlayer.pause() }
 
     color: "#000000"
@@ -93,6 +84,10 @@ Rectangle {
 
             source: session.workingVideoUrl
 
+            // Keep the last frame visible when playback ends instead of
+            // showing a black screen. Available since Qt 6.9.
+            endOfStreamPolicy: VideoOutput.KeepLastFrame
+
             // Auto-skip cut regions during playback.
             // Only active while playing — not during seeks or restarts.
             onPositionChanged: {
@@ -104,20 +99,6 @@ Rectangle {
                         videoPlayer.position = cut.end
                         return
                     }
-                }
-            }
-
-            // When the video reaches the end, freeze on the last effective
-            // frame instead of showing a black screen.
-            // Order matters: play() exits StoppedState, pause() freezes,
-            // then seek to the last frame so the decoder renders it.
-            onPlaybackStateChanged: {
-                if (playbackState === MediaPlayer.StoppedState && session.hasVideo) {
-                    videoPlayer.play()
-                    videoPlayer.pause()
-                    videoPlayer.position = session.effectiveToSource(
-                        Math.max(0, session.effectiveDurationMs - 1)
-                    )
                 }
             }
 
@@ -136,6 +117,7 @@ Rectangle {
                         videoPlayer.position = Math.min(suggestedPos, maxPos)
                     } else {
                         videoPlayer.stop()
+                        videoPlayer.clearOutput()
                         videoPlayer.source = ""
                     }
                 }
