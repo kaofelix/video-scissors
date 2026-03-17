@@ -375,18 +375,15 @@ Item {
                                     root.selectedMarkerId = markerItem.markerId
                                     root.markerMoved(markerItem.markerId, newTime)
                                     wasDragged = true
-                                } else {
-                                    // Didn't move enough, just select
-                                    root.selectedMarkerId = markerItem.markerId
                                 }
                                 root.forceActiveFocus()
                             }
                         }
 
                         onClicked: function(mouse) {
-                            // Select this marker (already handled in onReleased for drag case)
                             if (!wasDragged) {
-                                root.selectedMarkerId = markerItem.markerId
+                                // Toggle: deselect if already selected, select otherwise
+                                root.selectedMarkerId = markerItem.isSelected ? "" : markerItem.markerId
                                 root.forceActiveFocus()
                             }
                         }
