@@ -80,13 +80,20 @@ RowLayout {
     Text {
         id: timeDisplay
         color: palette.text
+        font.pixelSize: 11
+        font.family: "Menlo, monospace"
+        opacity: 0.7
         text: formatTime(root.position) + " / " + formatTime(root.duration)
 
         function formatTime(ms) {
-            var seconds = Math.floor(ms / 1000)
-            var minutes = Math.floor(seconds / 60)
-            seconds = seconds % 60
-            return minutes + ":" + (seconds < 10 ? "0" : "") + seconds
+            var totalSeconds = Math.floor(ms / 1000)
+            var minutes = Math.floor(totalSeconds / 60)
+            var seconds = totalSeconds % 60
+            var millis = Math.floor(ms % 1000)
+            var centis = Math.floor(millis / 10)
+            return minutes + ":"
+                + (seconds < 10 ? "0" : "") + seconds + "."
+                + (centis < 10 ? "0" : "") + centis
         }
     }
 }
