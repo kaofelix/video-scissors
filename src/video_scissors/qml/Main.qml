@@ -32,6 +32,12 @@ ApplicationWindow {
                 shortcut: StandardKey.Open
                 onTriggered: fileDialog.open()
             }
+            Action {
+                text: qsTr("&Export…")
+                shortcut: "Ctrl+E"
+                enabled: session.hasVideo && !videoArea.hasCrop
+                onTriggered: exportDialog.open()
+            }
         }
         Menu {
             title: qsTr("&Edit")
@@ -105,12 +111,34 @@ ApplicationWindow {
         onActivated: stepPlayhead(-1000)
     }
 
+    Shortcut {
+        sequence: "M"
+        enabled: session.hasVideo && !videoArea.hasCrop
+        onActivated: {
+            // Add marker at current playhead in source time (seconds)
+            var sourceMs = session.effectiveToSource(window.effectivePosition)
+            session.addMarker(sourceMs / 1000)
+        }
+    }
+
     FileDialog {
         id: fileDialog
         title: "Open Video"
         nameFilters: ["Video files (*.mp4 *.mov *.avi *.mkv)", "All files (*)"]
         onAccepted: {
             session.openFile(selectedFile.toString().replace("file://", ""))
+        }
+    }
+
+    FileDialog {
+        id: exportDialog
+        objectName: "exportDialog"
+        title: "Export Video"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["Video files (*.mp4)", "All files (*)"]
+        onAccepted: {
+            var path = selectedFile.toString().replace("file://", "")
+            session.exportVideo(path)
         }
     }
 

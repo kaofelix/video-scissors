@@ -814,3 +814,77 @@ class TestTransportButtons:
 
         assert step_back is not None
         assert step_fwd is not None
+
+
+class TestActionShortcuts:
+    """Tests for M (add marker) and ⌘E (export) shortcuts."""
+
+    def test_m_adds_marker_at_playhead(self, app_window, qtbot, test_video):
+        """Pressing M adds a marker at the current playhead position."""
+        app_window._session.openFile(str(test_video))
+        qtbot.wait(200)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+
+        # Seek to a known position
+        video_area.setProperty("position", 500)
+        qtbot.wait(100)
+
+        # No markers initially
+        markers = app_window._session.document.markers
+        assert len(markers) == 0
+
+        # Press M to add marker
+        qtbot.keyClick(app_window, Qt.Key_M)
+        qtbot.wait(100)
+
+        # Should have one marker near 0.5 seconds
+        markers = app_window._session.document.markers
+        assert len(markers) == 1
+        assert abs(markers[0]["time"] - 0.5) < 0.1
+
+    def test_m_does_nothing_without_video(self, app_window, qtbot):
+        """M does nothing when no video is loaded."""
+        qtbot.keyClick(app_window, Qt.Key_M)
+        qtbot.wait(50)
+        # Should not crash
+
+    def test_m_adds_multiple_markers(self, app_window, qtbot, test_video):
+        """Multiple M presses at different positions add multiple markers."""
+        app_window._session.openFile(str(test_video))
+        qtbot.wait(200)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+
+        # Add marker at 500ms
+        video_area.setProperty("position", 500)
+        qtbot.wait(50)
+        qtbot.keyClick(app_window, Qt.Key_M)
+        qtbot.wait(100)
+
+        # Add marker at 1000ms
+        video_area.setProperty("position", 1000)
+        qtbot.wait(50)
+        qtbot.keyClick(app_window, Qt.Key_M)
+        qtbot.wait(100)
+
+        markers = app_window._session.document.markers
+        assert len(markers) == 2
+
+    def test_cmd_e_opens_export_dialog(self, app_window, qtbot, test_video):
+        """⌘E opens the export save dialog when a video is loaded."""
+        app_window._session.openFile(str(test_video))
+        qtbot.wait(200)
+
+        export_dialog = app_window.findChild(QObject, "exportDialog")
+        assert export_dialog is not None
+
+        # Dialog should not be visible initially
+        assert export_dialog.property("visible") is False
+
+        # Press ⌘E
+        qtbot.keyClick(app_window, Qt.Key_E, Qt.ControlModifier)
+        qtbot.wait(100)
+
+        # Dialog should be visible now
+        assert export_dialog.property("visible") is True

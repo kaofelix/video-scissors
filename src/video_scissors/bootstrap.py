@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject
 
+from video_scissors.export_service import FFmpegExportService
 from video_scissors.session import EditorSession
 from video_scissors.thumbnails import ThumbnailExtractor
 
@@ -28,5 +29,6 @@ def create_session(
 
     return EditorSession(
         thumbnail_extractor=thumbnail_extractor,
+        export_service=FFmpegExportService(),
         parent=parent,
     )

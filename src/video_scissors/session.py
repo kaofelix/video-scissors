@@ -30,7 +30,7 @@ from video_scissors.document import Document, Marker, effective_duration
 from video_scissors.document import effective_to_source as _effective_to_source
 from video_scissors.document import source_to_effective as _source_to_effective
 from video_scissors.models import DocumentModel
-from video_scissors.services import ThumbnailExtractorProtocol
+from video_scissors.services import ExportService, ThumbnailExtractorProtocol
 
 
 @dataclass(frozen=True)
@@ -87,6 +87,7 @@ class EditorSession(QObject):
     def __init__(
         self,
         thumbnail_extractor: ThumbnailExtractorProtocol | None = None,
+        export_service: ExportService | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -97,6 +98,7 @@ class EditorSession(QObject):
         self._content_revision: int = 0
         self._suggested_position_ms: float = 0
         self._thumbnail_extractor = thumbnail_extractor
+        self._export_service = export_service
 
         # Stable sub-models for QML binding
         self._document_model = DocumentModel(self)
@@ -397,6 +399,15 @@ class EditorSession(QObject):
         """Set crop region (QML slot). Coordinates in source pixels."""
         self.set_crop(x, y, width, height)
         self._sync_document_model()
+
+    @Slot(str)
+    def exportVideo(self, output_path: str) -> None:
+        """Export the edited video to a file (QML slot)."""
+        if self._current is None or self._export_service is None:
+            return
+        source = self._current.video.path
+        edit_spec = self._current.document.edit_spec
+        self._export_service.export(source, edit_spec, Path(output_path))
 
     @Slot(int, int, int)
     def requestThumbnails(self, frame_count: int, thumb_height: int, revision: int) -> None:

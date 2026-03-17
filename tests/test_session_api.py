@@ -566,6 +566,54 @@ class TestEditSpecProperties:
             session.redo(0)
 
 
+class TestExportVideo:
+    """Tests for export slot on EditorSession."""
+
+    def test_export_calls_export_service(self, test_video: Path, tmp_path: Path):
+        """exportVideo slot delegates to the export service."""
+        calls: list[tuple] = []
+
+        class FakeExportService:
+            def export(self, source, edit_spec, output, on_progress=None):
+                calls.append((source, edit_spec, output))
+
+        session = make_session()
+        session._export_service = FakeExportService()
+        session.load(test_video)
+
+        output = tmp_path / "out.mp4"
+        session.exportVideo(str(output))
+
+        assert len(calls) == 1
+        assert calls[0][0] == test_video
+        assert calls[0][2] == output
+
+    def test_export_does_nothing_without_video(self, tmp_path: Path):
+        """exportVideo does nothing when no video is loaded."""
+        session = make_session()
+        # Should not crash
+        session.exportVideo(str(tmp_path / "out.mp4"))
+
+    def test_export_passes_current_edit_spec(self, test_video: Path, tmp_path: Path):
+        """exportVideo passes the current edit spec to the service."""
+        calls: list[tuple] = []
+
+        class FakeExportService:
+            def export(self, source, edit_spec, output, on_progress=None):
+                calls.append((source, edit_spec, output))
+
+        session = make_session()
+        session._export_service = FakeExportService()
+        session.load(test_video)
+        session.setCrop(10, 20, 100, 80)
+
+        session.exportVideo(str(tmp_path / "out.mp4"))
+
+        edit_spec = calls[0][1]
+        assert edit_spec.crop is not None
+        assert edit_spec.crop.x == 10
+
+
 def marker_times(markers: list) -> list[float]:
     """Extract times from marker objects."""
     return [m["time"] for m in markers]
