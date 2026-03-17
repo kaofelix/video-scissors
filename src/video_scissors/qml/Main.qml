@@ -60,8 +60,7 @@ ApplicationWindow {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 8
-        spacing: 8
+        spacing: 0
 
         VideoArea {
             id: videoArea
@@ -75,6 +74,9 @@ ApplicationWindow {
             id: timeline
             objectName: "timeline"
             Layout.fillWidth: true
+            Layout.leftMargin: 8
+            Layout.rightMargin: 8
+            Layout.topMargin: 8
             Layout.preferredHeight: implicitHeight
 
             position: window.effectivePosition
@@ -128,6 +130,9 @@ ApplicationWindow {
 
         TransportControls {
             Layout.fillWidth: true
+            Layout.leftMargin: 8
+            Layout.rightMargin: 8
+            Layout.bottomMargin: 8
             position: window.effectivePosition
             duration: session.effectiveDurationMs
             playbackState: videoArea.playbackState

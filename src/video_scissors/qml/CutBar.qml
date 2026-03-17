@@ -481,15 +481,27 @@ Item {
         }
     }
 
-    // Status hint
+    // Scissor icon (left side)
+    Text {
+        id: scissorIcon
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.leftMargin: 6
+        text: "✂"
+        font.pixelSize: 14
+        color: "white"
+        opacity: root.enabled ? 0.7 : 0.2
+    }
+
+    // Status hint (replaces scissor icon on segment hover)
     Text {
         id: statusHint
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         anchors.rightMargin: 8
-        text: root.hoveredSegment >= 0 ? "⌘+click to cut" : ""
+        text: "⌘+click to cut"
         font.pixelSize: 10
-        color: palette.text
+        color: "white"
         opacity: 0.5
         visible: root.hoveredSegment >= 0
 

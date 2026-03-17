@@ -46,40 +46,21 @@ Item {
     signal segmentCut(real startSeconds, real endSeconds)
 
     // Layout constants
-    readonly property int iconColumnWidth: 28
     readonly property int cutBarHeight: 20
     readonly property int scrubberHeight: 44
     readonly property int cornerRadius: 6
 
     implicitHeight: cutBarHeight + scrubberHeight
 
-    // Grid layout using anchors for precise control
+    // Stacked layout: CutBar on top, Scrubber below, both full width
     Item {
         id: layout
         anchors.fill: parent
 
-        // Top-left: Scissor icon
-        Item {
-            id: iconCell
-            anchors.left: parent.left
-            anchors.top: parent.top
-            width: root.iconColumnWidth
-            height: root.cutBarHeight
-
-            Text {
-                anchors.centerIn: parent
-                text: "✂"
-                font.pixelSize: 14
-                color: palette.text
-                opacity: root.enabled ? 0.7 : 0.3
-            }
-        }
-
-        // Top-right: CutBar track
         CutBar {
             id: cutBar
             objectName: "cutBar"
-            anchors.left: iconCell.right
+            anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
             height: root.cutBarHeight
@@ -105,19 +86,9 @@ Item {
             }
         }
 
-        // Bottom-left: Empty spacer (same width as icon)
-        Item {
-            id: spacerCell
-            anchors.left: parent.left
-            anchors.top: iconCell.bottom
-            width: root.iconColumnWidth
-            height: root.scrubberHeight
-        }
-
-        // Bottom-right: Scrubber track
         Scrubber {
             id: scrubber
-            anchors.left: spacerCell.right
+            anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: cutBar.bottom
             height: root.scrubberHeight
