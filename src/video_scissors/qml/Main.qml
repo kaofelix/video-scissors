@@ -63,8 +63,13 @@ ApplicationWindow {
         ? 1000.0 / session.videoFrameRate : 1000.0 / 30.0
 
     function stepPlayhead(deltaMs) {
-        // Pause if playing (standard NLE behavior)
         if (videoArea.playbackState === MediaPlayer.PlayingState) {
+            // Pause if playing (standard NLE behavior)
+            videoArea.pause()
+        } else if (videoArea.playbackState === MediaPlayer.StoppedState) {
+            // Exit StoppedState so seeking renders the new frame.
+            // play() → pause() transitions to PausedState.
+            videoArea.play()
             videoArea.pause()
         }
         // Step in effective time, then convert to source for seeking

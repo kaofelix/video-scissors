@@ -738,6 +738,26 @@ class TestFrameStepping:
         new_pos = video_area.property("position")
         assert new_pos <= duration
 
+    def test_step_from_stopped_state_enters_paused(self, app_window, qtbot, test_video):
+        """Stepping from StoppedState transitions to PausedState so frames render."""
+        app_window._session.openFile(str(test_video))
+        qtbot.wait(200)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+
+        # Force into StoppedState by stopping the player
+        video_player = app_window.findChild(QObject, "videoPlayer")
+        video_player.metaObject().invokeMethod(video_player, "stop")
+        qtbot.wait(100)
+        assert video_area.property("playbackState") == QMediaPlayer.StoppedState
+
+        # Step backward — should transition out of StoppedState
+        qtbot.keyClick(app_window, Qt.Key_Left)
+        qtbot.wait(100)
+
+        # Should be in paused state (not stopped) so frames render
+        assert video_area.property("playbackState") == QMediaPlayer.PausedState
+
     def test_left_arrow_clamps_to_zero(self, app_window, qtbot, test_video):
         """Left arrow at start of video doesn't go below zero."""
         app_window._session.openFile(str(test_video))
