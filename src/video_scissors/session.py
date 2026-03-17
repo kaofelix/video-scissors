@@ -25,13 +25,12 @@ from video_scissors.commands import (
     MoveMarkerCommand,
     RemoveMarkerCommand,
     SetCropCommand,
-    SetWorkingVideoCommand,
 )
 from video_scissors.document import Document, Marker, effective_duration
 from video_scissors.document import effective_to_source as _effective_to_source
 from video_scissors.document import source_to_effective as _source_to_effective
 from video_scissors.models import DocumentModel
-from video_scissors.services import CropRequest, CutRequest, EditService, ThumbnailExtractorProtocol
+from video_scissors.services import ThumbnailExtractorProtocol
 
 
 @dataclass(frozen=True)
@@ -88,7 +87,6 @@ class EditorSession(QObject):
     def __init__(
         self,
         thumbnail_extractor: ThumbnailExtractorProtocol | None = None,
-        edit_service: EditService | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -99,7 +97,6 @@ class EditorSession(QObject):
         self._content_revision: int = 0
         self._suggested_position_ms: float = 0
         self._thumbnail_extractor = thumbnail_extractor
-        self._edit_service = edit_service
 
         # Stable sub-models for QML binding
         self._document_model = DocumentModel(self)
@@ -339,13 +336,8 @@ class EditorSession(QObject):
         """Undo the last edit."""
         if not self._qt_undo_stack.canUndo() or self._current is None:
             return
-        old_video = self.working_video
         old_doc = self._raw_document
         self._qt_undo_stack.undo()
-        self._suggested_position_ms = currentPositionMs
-        self.suggestedPositionMsChanged.emit()
-        if self.working_video != old_video:
-            self._emit_video_properties()
         self._sync_document_model()
         if old_doc.edit_spec != self._raw_document.edit_spec:
             self._emit_display_dimensions()
@@ -355,13 +347,8 @@ class EditorSession(QObject):
         """Redo the last undone edit."""
         if not self._qt_undo_stack.canRedo() or self._current is None:
             return
-        old_video = self.working_video
         old_doc = self._raw_document
         self._qt_undo_stack.redo()
-        self._suggested_position_ms = currentPositionMs
-        self.suggestedPositionMsChanged.emit()
-        if self.working_video != old_video:
-            self._emit_video_properties()
         self._sync_document_model()
         if old_doc.edit_spec != self._raw_document.edit_spec:
             self._emit_display_dimensions()
@@ -410,39 +397,6 @@ class EditorSession(QObject):
         """Set crop region (QML slot). Coordinates in source pixels."""
         self.set_crop(x, y, width, height)
         self._sync_document_model()
-
-    @Slot(int, int, int, int, float)
-    def applyCrop(
-        self, x: int, y: int, width: int, height: int, currentPositionMs: float = 0
-    ) -> None:
-        """Apply a crop operation to the working video."""
-        if self._current is None or self._edit_service is None:
-            return
-        request = CropRequest(x=x, y=y, width=width, height=height)
-        result = self._edit_service.apply_crop(self._current.video.path, request)
-        self.set_working_video(result.output_path)
-        self._suggested_position_ms = currentPositionMs
-        self.suggestedPositionMsChanged.emit()
-
-    @Slot(float, float, float)
-    def applyCut(self, start: float, end: float, currentPositionMs: float = 0) -> None:
-        """Apply a cut (segment removal) to the working video."""
-        if self._current is None or self._edit_service is None:
-            return
-        request = CutRequest(start=start, end=end)
-        result = self._edit_service.apply_cut(self._current.video.path, request)
-        self.apply_cut(start, end, result.output_path)
-        # Adjust position based on cut region
-        start_ms = start * 1000
-        end_ms = end * 1000
-        cut_duration_ms = end_ms - start_ms
-        if currentPositionMs < start_ms:
-            self._suggested_position_ms = currentPositionMs
-        elif currentPositionMs < end_ms:
-            self._suggested_position_ms = start_ms
-        else:
-            self._suggested_position_ms = currentPositionMs - cut_duration_ms
-        self.suggestedPositionMsChanged.emit()
 
     @Slot(int, int, int)
     def requestThumbnails(self, frame_count: int, thumb_height: int, revision: int) -> None:
@@ -494,17 +448,6 @@ class EditorSession(QObject):
             self._emit_all_video_properties()
             self._bump_content_revision()
 
-    def set_working_video(self, path: Path) -> None:
-        """Update the working video path after an edit."""
-        if self._current is None:
-            return
-        previous_snapshot = self._current
-        video_state = self._build_working_state(path)
-        new_snapshot = SessionSnapshot(video=video_state, document=self._current.document)
-        cmd = SetWorkingVideoCommand(self, previous_snapshot, new_snapshot)
-        self._qt_undo_stack.push(cmd)
-        self._emit_video_properties()
-
     def add_marker(self, time: float) -> Marker | None:
         """Add a cut marker at the specified time in seconds.
 
@@ -555,47 +498,11 @@ class EditorSession(QObject):
             return
         self._qt_undo_stack.push(SetCropCommand(self, x, y, width, height))
 
-    def apply_cut(self, start: float, end: float, output_path: Path) -> None:
-        """Apply a cut and adjust markers accordingly.
-
-        Markers inside [start, end) are removed.
-        Markers after end are shifted earlier by (end - start).
-        """
-        if self._current is None:
-            return
-
-        previous_snapshot = self._current
-        cut_duration = end - start
-        adjusted_markers: list[Marker] = []
-
-        for marker in self._current.document.markers:
-            if marker.time < start:
-                adjusted_markers.append(marker)
-            elif marker.time >= end:
-                adjusted_markers.append(Marker(id=marker.id, time=marker.time - cut_duration))
-
-        video_state = self._build_working_state(output_path)
-        current_edit_spec = self._current.document.edit_spec
-        new_document = Document(
-            edit_spec=current_edit_spec,
-            markers=tuple(adjusted_markers),
-        )
-        new_snapshot = SessionSnapshot(video=video_state, document=new_document)
-        cmd = SetWorkingVideoCommand(self, previous_snapshot, new_snapshot)
-        self._qt_undo_stack.push(cmd)
-        self._emit_video_properties()
-        self._sync_document_model()
-
     def _set_document(self, document: Document) -> None:
         """Update the document (called by commands)."""
         if self._current is None:
             return
         self._current = SessionSnapshot(video=self._current.video, document=document)
-
-    def _restore_snapshot(self, snapshot: SessionSnapshot) -> None:
-        """Restore a complete snapshot (called by SetWorkingVideoCommand)."""
-        self._current = snapshot
-        self._bump_working_video_revision()
 
     # ------------------------------------------------------------------ #
     #  Signal emission helpers                                            #

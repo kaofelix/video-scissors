@@ -8,10 +8,6 @@ between high-level application logic and FFmpeg implementation details.
 from pathlib import Path
 
 from video_scissors.services import (
-    CropRequest,
-    CutRequest,
-    EditResult,
-    EditService,
     ExportRequest,
     ExportService,
     MediaProbeService,
@@ -42,40 +38,6 @@ class TestMediaProbeService:
         assert info.height == 1080
         assert info.duration == 10.5
         assert info.codec == "h264"
-
-
-class TestEditService:
-    """Tests for the EditService protocol."""
-
-    def test_protocol_defines_apply_crop(self):
-        """EditService requires apply_crop method."""
-        assert hasattr(EditService, "apply_crop")
-
-    def test_protocol_defines_apply_cut(self):
-        """EditService requires apply_cut method."""
-        assert hasattr(EditService, "apply_cut")
-
-    def test_crop_request_captures_crop_parameters(self):
-        """CropRequest holds the crop box coordinates."""
-        req = CropRequest(x=100, y=50, width=800, height=600)
-
-        assert req.x == 100
-        assert req.y == 50
-        assert req.width == 800
-        assert req.height == 600
-
-    def test_cut_request_captures_time_range(self):
-        """CutRequest holds start and end times to remove."""
-        req = CutRequest(start=5.0, end=10.0)
-
-        assert req.start == 5.0
-        assert req.end == 10.0
-
-    def test_edit_result_contains_output_path(self):
-        """EditResult holds the path to the edited video."""
-        result = EditResult(output_path=Path("/tmp/edited.mp4"))
-
-        assert result.output_path == Path("/tmp/edited.mp4")
 
 
 class TestThumbnailService:

@@ -13,36 +13,7 @@ from PySide6.QtGui import QUndoCommand
 from video_scissors.document import CropRect, Document, EditSpec, Marker
 
 if TYPE_CHECKING:
-    from video_scissors.session import EditorSession, SessionSnapshot
-
-
-class SetWorkingVideoCommand(QUndoCommand):
-    """Set working video path (for destructive edits that produce new files).
-
-    This is a legacy command for backward compatibility with operations that
-    produce new video files (crops, destructive cuts). Eventually these will
-    be replaced with non-destructive edits.
-    """
-
-    def __init__(
-        self,
-        session: EditorSession,
-        previous_snapshot: SessionSnapshot,
-        new_snapshot: SessionSnapshot,
-        parent: QUndoCommand | None = None,
-    ):
-        super().__init__("Video edit", parent)
-        self._session = session
-        self._previous_snapshot = previous_snapshot
-        self._new_snapshot = new_snapshot
-
-    def redo(self) -> None:
-        """Apply the new working video."""
-        self._session._restore_snapshot(self._new_snapshot)
-
-    def undo(self) -> None:
-        """Restore the previous working video."""
-        self._session._restore_snapshot(self._previous_snapshot)
+    from video_scissors.session import EditorSession
 
 
 class AddCutCommand(QUndoCommand):

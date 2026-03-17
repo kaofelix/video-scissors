@@ -13,16 +13,11 @@ class TestCreateSession:
         create_session(workspace_dir=tmp_path)
 
         assert (tmp_path / "thumbnails").is_dir()
-        assert (tmp_path / "edits").is_dir()
 
-    def test_create_session_places_crop_outputs_in_edit_workspace(
-        self, test_video: Path, tmp_path: Path
-    ):
-        """The composed session writes edit outputs under the edit workspace."""
+    def test_create_session_returns_functional_session(self, test_video: Path, tmp_path: Path):
+        """The composed session can load a video and perform edits."""
         session = create_session(workspace_dir=tmp_path)
         session.openFile(str(test_video))
 
-        session.applyCrop(0, 0, 160, 120)
-
-        assert session.working_video is not None
-        assert session.working_video.parent == tmp_path / "edits"
+        assert session.hasVideo is True
+        assert session.source_video == test_video

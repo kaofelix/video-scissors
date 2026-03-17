@@ -6,10 +6,7 @@ as seen from QML. The session is now the direct QML interface (no bridge).
 
 from pathlib import Path
 
-from conftest import generate_test_video
-from video_scissors.bootstrap import create_session
 from video_scissors.document import CropRect
-from video_scissors.services import EditResult
 from video_scissors.session import EditorSession
 
 
@@ -31,27 +28,12 @@ class FakeThumbnailExtractor:
         return self.frames
 
 
-class FakeEditService:
-    """Test double for edit application."""
-
-    def __init__(self, output_path: Path | None = None):
-        self.output_path = output_path or Path("/tmp/fake-edit.mp4")
-
-    def apply_crop(self, source: Path, request) -> EditResult:
-        return EditResult(output_path=self.output_path)
-
-    def apply_cut(self, source: Path, request) -> EditResult:
-        return EditResult(output_path=self.output_path)
-
-
 def make_session(
     thumbnail_extractor: FakeThumbnailExtractor | None = None,
-    edit_service: FakeEditService | None = None,
 ) -> EditorSession:
     """Create an EditorSession with simple test doubles by default."""
     return EditorSession(
         thumbnail_extractor=thumbnail_extractor or FakeThumbnailExtractor([]),
-        edit_service=edit_service or FakeEditService(),
     )
 
 
@@ -106,19 +88,6 @@ class TestSessionProperties:
 
         assert session.hasVideo is False
 
-    def test_reload_updates_working_video(self, test_video: Path, tmp_path: Path):
-        """Setting a new working video updates workingVideoUrl."""
-        session = make_session()
-        session.load(test_video)
-
-        new_video = tmp_path / "edited.mp4"
-        generate_test_video(new_video, duration=1.0)
-
-        session.set_working_video(new_video)
-
-        assert str(new_video) in session.workingVideoUrl
-        assert session.source_video == test_video
-
 
 class TestSessionUndoRedo:
     """Tests for undo/redo operations via session."""
@@ -132,116 +101,6 @@ class TestSessionUndoRedo:
         session = make_session()
         session.load(test_video)
         assert session.canRedo is False
-
-    def test_undo_restores_previous_video(self, test_video: Path, tmp_path: Path):
-        session = make_session()
-        session.load(test_video)
-
-        edited = tmp_path / "edited.mp4"
-        generate_test_video(edited, duration=1.0)
-        session.set_working_video(edited)
-
-        session.undo()
-
-        assert str(test_video) in session.workingVideoUrl
-
-    def test_redo_restores_undone_video(self, test_video: Path, tmp_path: Path):
-        session = make_session()
-        session.load(test_video)
-
-        edited = tmp_path / "edited.mp4"
-        generate_test_video(edited, duration=1.0)
-        session.set_working_video(edited)
-        session.undo()
-
-        session.redo()
-
-        assert str(edited) in session.workingVideoUrl
-
-    def test_undo_emits_url_changed(self, test_video: Path, tmp_path: Path):
-        session = make_session()
-        session.load(test_video)
-
-        edited = tmp_path / "edited.mp4"
-        generate_test_video(edited, duration=1.0)
-        session.set_working_video(edited)
-
-        signals = []
-        session.workingVideoUrlChanged.connect(lambda: signals.append(True))
-        session.undo()
-
-        assert len(signals) == 1
-
-
-class TestSessionCrop:
-    """Tests for crop operation via session."""
-
-    def test_apply_crop_changes_working_video(self, test_video: Path):
-        session = create_session()
-        session.load(test_video)
-
-        session.applyCrop(0, 0, 160, 120)
-
-        assert session.working_video != test_video
-        assert session.working_video is not None
-        assert session.working_video.exists()
-
-    def test_apply_crop_emits_url_changed(self, test_video: Path):
-        session = create_session()
-        session.load(test_video)
-
-        signals = []
-        session.workingVideoUrlChanged.connect(lambda: signals.append(True))
-        session.applyCrop(0, 0, 160, 120)
-
-        assert len(signals) == 1
-
-    def test_crop_can_be_undone(self, test_video: Path):
-        session = create_session()
-        session.load(test_video)
-
-        session.applyCrop(0, 0, 160, 120)
-
-        assert session.canUndo is True
-        session.undo()
-        assert str(test_video) in session.workingVideoUrl
-
-
-class TestSessionCut:
-    """Tests for cut (segment removal) operation via session."""
-
-    def test_apply_cut_changes_working_video(self, test_video: Path):
-        """applyCut creates a new working video with the segment removed."""
-        session = create_session()
-        session.load(test_video)
-
-        session.applyCut(0.5, 1.0)
-
-        assert session.working_video != test_video
-        assert session.working_video is not None
-        assert session.working_video.exists()
-
-    def test_apply_cut_emits_url_changed(self, test_video: Path):
-        """applyCut emits workingVideoUrlChanged signal."""
-        session = create_session()
-        session.load(test_video)
-
-        signals = []
-        session.workingVideoUrlChanged.connect(lambda: signals.append(True))
-        session.applyCut(0.5, 1.0)
-
-        assert len(signals) == 1
-
-    def test_cut_can_be_undone(self, test_video: Path):
-        """Cut operation can be undone to restore original video."""
-        session = create_session()
-        session.load(test_video)
-
-        session.applyCut(0.5, 1.0)
-
-        assert session.canUndo is True
-        session.undo()
-        assert str(test_video) in session.workingVideoUrl
 
 
 class TestContentRevision:
@@ -438,35 +297,6 @@ class TestSessionMarkers:
 
         assert len(signals) == 1
 
-    def test_cut_adjusts_markers(self, test_video: Path):
-        """Cutting a segment adjusts marker positions."""
-        session = create_session()
-        session.load(test_video)
-
-        session.addMarker(0.3)  # Before cut
-        session.addMarker(0.7)  # Inside cut [0.5, 1.0]
-        session.addMarker(1.5)  # After cut
-
-        session.applyCut(0.5, 1.0)
-
-        times = marker_times(session.document.markers)
-        assert 0.3 in times  # Before - unchanged
-        assert 0.7 not in times  # Inside - removed
-        assert 1.0 in times  # 1.5 shifted by 0.5
-
-    def test_cut_emits_markers_changed_when_adjusted(self, test_video: Path):
-        """Cutting emits markersChanged when markers are adjusted."""
-        session = create_session()
-        session.load(test_video)
-        session.addMarker(1.5)
-
-        signals = []
-        session.document.markersChanged.connect(lambda: signals.append(True))
-
-        session.applyCut(0.5, 1.0)
-
-        assert len(signals) == 1
-
 
 class TestSuggestedPosition:
     """Tests for playhead position stability across operations."""
@@ -475,63 +305,6 @@ class TestSuggestedPosition:
         session = make_session()
         session.load(test_video)
         assert session.suggestedPositionMs == 0
-
-    def test_apply_crop_preserves_position(self, test_video: Path):
-        session = create_session()
-        session.load(test_video)
-
-        session.applyCrop(0, 0, 160, 120, 1500)
-
-        assert session.suggestedPositionMs == 1500
-
-    def test_apply_cut_position_before_cut_unchanged(self, test_video: Path):
-        session = create_session()
-        session.load(test_video)
-
-        session.applyCut(0.5, 1.0, 300)
-
-        assert session.suggestedPositionMs == 300
-
-    def test_apply_cut_position_inside_cut_snaps_to_start(self, test_video: Path):
-        session = create_session()
-        session.load(test_video)
-
-        session.applyCut(0.5, 1.0, 700)
-
-        assert session.suggestedPositionMs == 500
-
-    def test_apply_cut_position_after_cut_shifted(self, test_video: Path):
-        session = create_session()
-        session.load(test_video)
-
-        session.applyCut(0.5, 1.0, 1500)
-
-        assert session.suggestedPositionMs == 1000
-
-    def test_undo_preserves_position(self, test_video: Path, tmp_path: Path):
-        session = make_session()
-        session.load(test_video)
-
-        edited = tmp_path / "edited.mp4"
-        generate_test_video(edited, duration=1.0)
-        session.set_working_video(edited)
-
-        session.undo(750)
-
-        assert session.suggestedPositionMs == 750
-
-    def test_redo_preserves_position(self, test_video: Path, tmp_path: Path):
-        session = make_session()
-        session.load(test_video)
-
-        edited = tmp_path / "edited.mp4"
-        generate_test_video(edited, duration=1.0)
-        session.set_working_video(edited)
-        session.undo(0)
-
-        session.redo(500)
-
-        assert session.suggestedPositionMs == 500
 
 
 class TestUndoStateSignal:
@@ -600,22 +373,6 @@ class TestUndoStateSignal:
         session.undo()
 
         assert len(signals) == 0
-
-    def test_undo_video_change_emits_url_changed(self, test_video: Path, tmp_path: Path):
-        """Undoing a video change should emit workingVideoUrlChanged."""
-        session = make_session()
-        session.load(test_video)
-
-        edited = tmp_path / "edited.mp4"
-        generate_test_video(edited, duration=1.0)
-        session.set_working_video(edited)
-
-        signals = []
-        session.workingVideoUrlChanged.connect(lambda: signals.append(True))
-
-        session.undo()
-
-        assert len(signals) == 1
 
 
 class TestEditSpecProperties:

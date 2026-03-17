@@ -28,31 +28,6 @@ class VideoInfo:
 
 
 @dataclass(frozen=True)
-class CropRequest:
-    """Parameters for a crop operation."""
-
-    x: int
-    y: int
-    width: int
-    height: int
-
-
-@dataclass(frozen=True)
-class CutRequest:
-    """Parameters for cutting/removing a time range."""
-
-    start: float
-    end: float
-
-
-@dataclass(frozen=True)
-class EditResult:
-    """Result of an edit operation."""
-
-    output_path: Path
-
-
-@dataclass(frozen=True)
 class ThumbnailRequest:
     """Parameters for thumbnail generation."""
 
@@ -76,18 +51,6 @@ class MediaProbeService(Protocol):
 
     def probe(self, path: Path) -> VideoInfo:
         """Probe a video file and return its metadata."""
-        ...
-
-
-class EditService(Protocol):
-    """Service for applying edit operations."""
-
-    def apply_crop(self, source: Path, request: CropRequest) -> EditResult:
-        """Apply a crop operation to the video."""
-        ...
-
-    def apply_cut(self, source: Path, request: CutRequest) -> EditResult:
-        """Remove a time range from the video."""
         ...
 
 
