@@ -17,6 +17,7 @@ This directory is gitignored.
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QPoint, QRectF, Qt
+from PySide6.QtMultimedia import QMediaPlayer
 
 from conftest import generate_test_video
 
@@ -588,3 +589,57 @@ class TestMarkerSelection:
 
         # Selection should be cleared
         assert cutbar.property("selectedMarkerId") == ""
+
+
+class TestKeyboardShortcuts:
+    """Tests for global keyboard shortcuts."""
+
+    def test_space_toggles_play_pause(self, app_window, qtbot, test_video):
+        """Space bar toggles between play and pause."""
+        app_window._session.openFile(str(test_video))
+        qtbot.wait(200)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+        assert video_area is not None
+
+        # Initially should not be playing
+        assert video_area.property("playbackState") != QMediaPlayer.PlayingState
+
+        # Press space to play
+        qtbot.keyClick(app_window, Qt.Key_Space)
+        qtbot.wait(100)
+
+        # Should be playing now
+        assert video_area.property("playbackState") == QMediaPlayer.PlayingState
+
+        # Press space again to pause
+        qtbot.keyClick(app_window, Qt.Key_Space)
+        qtbot.wait(100)
+
+        # Should be paused
+        assert video_area.property("playbackState") == QMediaPlayer.PausedState
+
+    def test_space_does_nothing_without_video(self, app_window, qtbot):
+        """Space bar does nothing when no video is loaded."""
+        # No video loaded - space should not cause errors
+        qtbot.keyClick(app_window, Qt.Key_Space)
+        qtbot.wait(50)
+        # Should not crash - that's the test
+
+    def test_space_works_regardless_of_focus(self, app_window, qtbot, test_video):
+        """Space bar works even when timeline/cutbar has focus."""
+        app_window._session.openFile(str(test_video))
+        qtbot.wait(200)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+        timeline = app_window.findChild(QObject, "timeline")
+
+        # Give focus to timeline
+        timeline.setProperty("focus", True)
+        qtbot.wait(50)
+
+        # Press space - should still toggle playback
+        qtbot.keyClick(app_window, Qt.Key_Space)
+        qtbot.wait(100)
+
+        assert video_area.property("playbackState") == QMediaPlayer.PlayingState

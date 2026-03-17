@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtMultimedia
 
 ApplicationWindow {
     id: window
@@ -45,6 +46,20 @@ ApplicationWindow {
                 shortcut: StandardKey.Redo
                 enabled: session.canRedo && !videoArea.hasCrop
                 onTriggered: session.redo(videoArea.position)
+            }
+        }
+    }
+
+    // -- Global keyboard shortcuts --
+
+    Shortcut {
+        sequence: "Space"
+        enabled: session.hasVideo && !videoArea.hasCrop
+        onActivated: {
+            if (videoArea.playbackState === MediaPlayer.PlayingState) {
+                videoArea.pause()
+            } else {
+                videoArea.play()
             }
         }
     }
