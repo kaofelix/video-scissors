@@ -52,6 +52,23 @@ ApplicationWindow {
 
     // -- Global keyboard shortcuts --
 
+    // Frame step increment in ms (1 frame at video frame rate)
+    readonly property real frameStepMs: session.videoFrameRate > 0
+        ? 1000.0 / session.videoFrameRate : 1000.0 / 30.0
+
+    function stepPlayhead(deltaMs) {
+        // Pause if playing (standard NLE behavior)
+        if (videoArea.playbackState === MediaPlayer.PlayingState) {
+            videoArea.pause()
+        }
+        // Step in effective time, then convert to source for seeking
+        var newEffective = Math.max(0, Math.min(
+            window.effectivePosition + deltaMs,
+            session.effectiveDurationMs
+        ))
+        videoArea.position = session.effectiveToSource(newEffective)
+    }
+
     Shortcut {
         sequence: "Space"
         enabled: session.hasVideo && !videoArea.hasCrop
@@ -62,6 +79,30 @@ ApplicationWindow {
                 videoArea.play()
             }
         }
+    }
+
+    Shortcut {
+        sequence: "Right"
+        enabled: session.hasVideo && !videoArea.hasCrop && !timeline.hasSelectedMarker
+        onActivated: stepPlayhead(window.frameStepMs)
+    }
+
+    Shortcut {
+        sequence: "Left"
+        enabled: session.hasVideo && !videoArea.hasCrop && !timeline.hasSelectedMarker
+        onActivated: stepPlayhead(-window.frameStepMs)
+    }
+
+    Shortcut {
+        sequence: "Shift+Right"
+        enabled: session.hasVideo && !videoArea.hasCrop && !timeline.hasSelectedMarker
+        onActivated: stepPlayhead(1000)
+    }
+
+    Shortcut {
+        sequence: "Shift+Left"
+        enabled: session.hasVideo && !videoArea.hasCrop && !timeline.hasSelectedMarker
+        onActivated: stepPlayhead(-1000)
     }
 
     FileDialog {
@@ -154,6 +195,8 @@ ApplicationWindow {
             enabled: session.hasVideo
             onPlayRequested: videoArea.play()
             onPauseRequested: videoArea.pause()
+            onStepForwardRequested: stepPlayhead(window.frameStepMs)
+            onStepBackwardRequested: stepPlayhead(-window.frameStepMs)
         }
     }
 }

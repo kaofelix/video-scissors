@@ -12,6 +12,8 @@ RowLayout {
 
     signal playRequested()
     signal pauseRequested()
+    signal stepForwardRequested()
+    signal stepBackwardRequested()
 
     spacing: 8
 
@@ -21,6 +23,21 @@ RowLayout {
     }
 
     Item { Layout.fillWidth: true }
+
+    RoundButton {
+        id: stepBackwardButton
+        objectName: "stepBackwardButton"
+        implicitWidth: 36
+        implicitHeight: 36
+        text: "◀|"
+        font.pixelSize: 12
+        onClicked: root.stepBackwardRequested()
+
+        background: Rectangle {
+            radius: stepBackwardButton.radius
+            color: stepBackwardButton.hovered ? palette.mid : "transparent"
+        }
+    }
 
     RoundButton {
         id: playButton
@@ -39,6 +56,21 @@ RowLayout {
         background: Rectangle {
             radius: playButton.radius
             color: playButton.hovered ? palette.mid : "transparent"
+        }
+    }
+
+    RoundButton {
+        id: stepForwardButton
+        objectName: "stepForwardButton"
+        implicitWidth: 36
+        implicitHeight: 36
+        text: "|▶"
+        font.pixelSize: 12
+        onClicked: root.stepForwardRequested()
+
+        background: Rectangle {
+            radius: stepForwardButton.radius
+            color: stepForwardButton.hovered ? palette.mid : "transparent"
         }
     }
 

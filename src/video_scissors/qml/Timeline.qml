@@ -33,6 +33,8 @@ Item {
 
     // State
     property bool enabled: true
+    // Whether a marker is currently selected (for keyboard shortcut routing)
+    readonly property bool hasSelectedMarker: cutBar.selectedMarkerId !== ""
 
     // Expose thumbnail URLs for external connection
     property alias thumbnailUrls: scrubber.thumbnailUrls

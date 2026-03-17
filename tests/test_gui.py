@@ -643,3 +643,174 @@ class TestKeyboardShortcuts:
         qtbot.wait(100)
 
         assert video_area.property("playbackState") == QMediaPlayer.PlayingState
+
+
+class TestFrameStepping:
+    """Tests for frame-accurate stepping via keyboard and transport buttons."""
+
+    def test_right_arrow_steps_forward(self, app_window, qtbot, test_video):
+        """Right arrow key steps forward by one frame."""
+        app_window._session.openFile(str(test_video))
+        qtbot.wait(200)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+        initial_pos = video_area.property("position")
+
+        # Press right arrow to step forward
+        qtbot.keyClick(app_window, Qt.Key_Right)
+        qtbot.wait(100)
+
+        new_pos = video_area.property("position")
+        assert new_pos > initial_pos
+
+    def test_left_arrow_steps_backward(self, app_window, qtbot, test_video):
+        """Left arrow key steps backward by one frame."""
+        app_window._session.openFile(str(test_video))
+        qtbot.wait(200)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+
+        # Seek to 500ms so we have room to step back
+        video_area.setProperty("position", 500)
+        qtbot.wait(100)
+        pos_before = video_area.property("position")
+
+        # Press left arrow to step backward
+        qtbot.keyClick(app_window, Qt.Key_Left)
+        qtbot.wait(100)
+
+        new_pos = video_area.property("position")
+        assert new_pos < pos_before
+
+    def test_shift_right_jumps_one_second(self, app_window, qtbot, test_video):
+        """Shift+Right jumps forward by 1 second."""
+        app_window._session.openFile(str(test_video))
+        qtbot.wait(200)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+        initial_pos = video_area.property("position")
+
+        # Shift+Right should jump ~1000ms
+        qtbot.keyClick(app_window, Qt.Key_Right, Qt.ShiftModifier)
+        qtbot.wait(100)
+
+        new_pos = video_area.property("position")
+        jump = new_pos - initial_pos
+        # Should be approximately 1 second (allow some tolerance)
+        assert jump >= 900
+
+    def test_shift_left_jumps_one_second_back(self, app_window, qtbot, test_video):
+        """Shift+Left jumps backward by 1 second."""
+        app_window._session.openFile(str(test_video))
+        qtbot.wait(200)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+
+        # Seek to 1500ms so we have room
+        video_area.setProperty("position", 1500)
+        qtbot.wait(100)
+        pos_before = video_area.property("position")
+
+        # Shift+Left should jump ~1000ms back
+        qtbot.keyClick(app_window, Qt.Key_Left, Qt.ShiftModifier)
+        qtbot.wait(100)
+
+        new_pos = video_area.property("position")
+        jump = pos_before - new_pos
+        assert jump >= 900
+
+    def test_right_arrow_clamps_to_duration(self, app_window, qtbot, test_video):
+        """Right arrow at end of video doesn't go past duration."""
+        app_window._session.openFile(str(test_video))
+        qtbot.wait(200)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+        duration = video_area.property("duration")
+
+        # Seek near end
+        video_area.setProperty("position", duration - 10)
+        qtbot.wait(100)
+
+        # Step forward - should clamp to duration
+        qtbot.keyClick(app_window, Qt.Key_Right)
+        qtbot.wait(100)
+
+        new_pos = video_area.property("position")
+        assert new_pos <= duration
+
+    def test_left_arrow_clamps_to_zero(self, app_window, qtbot, test_video):
+        """Left arrow at start of video doesn't go below zero."""
+        app_window._session.openFile(str(test_video))
+        qtbot.wait(200)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+
+        # Already at position 0 (or near it)
+        qtbot.keyClick(app_window, Qt.Key_Left)
+        qtbot.wait(100)
+
+        new_pos = video_area.property("position")
+        assert new_pos >= 0
+
+    def test_arrow_keys_deferred_to_cutbar_when_marker_selected(
+        self, app_window, qtbot, test_video
+    ):
+        """Arrow keys move marker (not playhead) when a marker is selected."""
+        app_window._session.openFile(str(test_video))
+        qtbot.wait(200)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+        cutbar = app_window.findChild(QObject, "cutBar")
+
+        # Add a marker and select it
+        marker = app_window._session.addMarker(1.0)
+        cutbar.setProperty("selectedMarkerId", marker["id"])
+        cutbar.setProperty("focus", True)
+        qtbot.wait(50)
+
+        pos_before = video_area.property("position")
+
+        # Right arrow should move marker, not playhead
+        qtbot.keyClick(app_window, Qt.Key_Right)
+        qtbot.wait(100)
+
+        # Playhead should not have moved
+        pos_after = video_area.property("position")
+        assert pos_after == pos_before
+
+        # But marker should have moved
+        markers = app_window._session.document.markers
+        assert markers[0]["time"] > 1.0
+
+    def test_frame_step_pauses_playback(self, app_window, qtbot, test_video):
+        """Stepping pauses playback if currently playing."""
+        app_window._session.openFile(str(test_video))
+        qtbot.wait(200)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+
+        # Start playing
+        qtbot.keyClick(app_window, Qt.Key_Space)
+        qtbot.wait(100)
+        assert video_area.property("playbackState") == QMediaPlayer.PlayingState
+
+        # Step forward - should pause
+        qtbot.keyClick(app_window, Qt.Key_Right)
+        qtbot.wait(100)
+
+        assert video_area.property("playbackState") == QMediaPlayer.PausedState
+
+
+class TestTransportButtons:
+    """Tests for frame step buttons in transport controls."""
+
+    def test_transport_has_step_buttons(self, app_window, qtbot, test_video):
+        """Transport controls have step forward and step backward buttons."""
+        app_window._session.openFile(str(test_video))
+        qtbot.wait(200)
+
+        step_back = app_window.findChild(QObject, "stepBackwardButton")
+        step_fwd = app_window.findChild(QObject, "stepForwardButton")
+
+        assert step_back is not None
+        assert step_fwd is not None
