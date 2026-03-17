@@ -151,6 +151,17 @@ ApplicationWindow {
         }
     }
 
+    // Clicking anywhere deselects markers. CutBar re-selects on marker clicks.
+    TapHandler {
+        onTapped: timeline.deselect()
+    }
+
+    Shortcut {
+        sequence: "Escape"
+        enabled: timeline.hasSelectedMarker
+        onActivated: timeline.deselect()
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0

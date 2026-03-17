@@ -75,11 +75,6 @@ Item {
 
     // Enable focus for keyboard handling
     focus: selectedMarkerId !== ""
-    onActiveFocusChanged: {
-        if (!activeFocus) {
-            selectedMarkerId = ""
-        }
-    }
     Keys.onPressed: function(event) {
         if (selectedMarkerId === "") return
 
