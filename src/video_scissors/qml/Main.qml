@@ -63,21 +63,25 @@ ApplicationWindow {
         ? 1000.0 / session.videoFrameRate : 1000.0 / 30.0
 
     function stepPlayhead(deltaMs) {
+        // Compute target position BEFORE any state transition,
+        // because play() from StoppedState resets position to 0.
+        var newEffective = Math.max(0, Math.min(
+            window.effectivePosition + deltaMs,
+            session.effectiveDurationMs
+        ))
+        var targetSource = session.effectiveToSource(newEffective)
+
         if (videoArea.playbackState === MediaPlayer.PlayingState) {
             // Pause if playing (standard NLE behavior)
             videoArea.pause()
         } else if (videoArea.playbackState === MediaPlayer.StoppedState) {
             // Exit StoppedState so seeking renders the new frame.
-            // play() → pause() transitions to PausedState.
-            videoArea.play()
+            // pause() transitions to PausedState without resetting position
+            // (unlike play() which always starts from the beginning).
             videoArea.pause()
         }
-        // Step in effective time, then convert to source for seeking
-        var newEffective = Math.max(0, Math.min(
-            window.effectivePosition + deltaMs,
-            session.effectiveDurationMs
-        ))
-        videoArea.position = session.effectiveToSource(newEffective)
+
+        videoArea.position = targetSource
     }
 
     Shortcut {

@@ -758,6 +758,34 @@ class TestFrameStepping:
         # Should be in paused state (not stopped) so frames render
         assert video_area.property("playbackState") == QMediaPlayer.PausedState
 
+    def test_step_back_from_end_does_not_jump_to_start(self, app_window, qtbot, test_video):
+        """Stepping back from the end of video steps by one frame, not to start."""
+        # Use a very short video so playback reaches the end quickly
+        short_video = test_video.parent / "short_500ms.mp4"
+        generate_test_video(short_video, duration=0.5, width=320, height=240)
+
+        app_window._session.openFile(str(short_video))
+        qtbot.wait(200)
+
+        video_area = app_window.findChild(QObject, "videoArea")
+
+        # Play video and wait for it to reach end (EndOfMedia → StoppedState)
+        video_area.metaObject().invokeMethod(video_area, "play")
+        qtbot.waitUntil(
+            lambda: video_area.property("playbackState") == QMediaPlayer.StoppedState,
+            timeout=3000,
+        )
+        pos_at_end = video_area.property("position")
+
+        # Step backward
+        qtbot.keyClick(app_window, Qt.Key_Left)
+        qtbot.wait(100)
+
+        # Should be near the end, not at the start
+        new_pos = video_area.property("position")
+        assert new_pos > 0, f"Position jumped to {new_pos}, expected near end"
+        assert new_pos < pos_at_end or pos_at_end == 0
+
     def test_left_arrow_clamps_to_zero(self, app_window, qtbot, test_video):
         """Left arrow at start of video doesn't go below zero."""
         app_window._session.openFile(str(test_video))
