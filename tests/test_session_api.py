@@ -119,12 +119,33 @@ class TestThumbnailRequests:
         assert session.displayWidth == 320
         assert session.displayHeight == 240
 
-    def test_request_thumbnails_extracts_and_emits(self, test_video: Path, tmp_path: Path, qtbot):
+    def test_request_thumbnails_ignored_without_proxy(
+        self, test_video: Path, tmp_path: Path, qtbot
+    ):
+        """Thumbnail requests are ignored when no proxy is available."""
         fake_frame = tmp_path / "frame.jpg"
         fake_frame.write_text("not a real image")
         extractor = FakeThumbnailExtractor([fake_frame])
         session = make_session(thumbnail_extractor=extractor)
         session.load(test_video)
+        # No proxy — request should be a no-op
+        session.requestThumbnails(3, 40)
+        qtbot.wait(50)
+
+        assert extractor.calls == []
+
+    def test_request_thumbnails_uses_proxy(self, test_video: Path, tmp_path: Path, qtbot):
+        """Thumbnail extraction uses the proxy video."""
+        fake_frame = tmp_path / "frame.jpg"
+        fake_frame.write_text("not a real image")
+        extractor = FakeThumbnailExtractor([fake_frame])
+        session = make_session(thumbnail_extractor=extractor)
+        session.load(test_video)
+
+        # Simulate proxy being ready
+        proxy_path = tmp_path / "proxy.mov"
+        proxy_path.write_text("fake proxy")
+        session._proxy_video = proxy_path
 
         signals = []
         session.thumbnailsReady.connect(lambda urls: signals.append(urls))
@@ -133,7 +154,7 @@ class TestThumbnailRequests:
         qtbot.waitUntil(lambda: len(signals) == 1, timeout=1000)
 
         assert signals == [[f"file://{fake_frame}"]]
-        assert extractor.calls == [(test_video, 3, 40, None)]
+        assert extractor.calls == [(proxy_path, 3, 40, None)]
 
     def test_request_thumbnails_passes_crop_from_edit_spec(
         self, test_video: Path, tmp_path: Path, qtbot
@@ -144,6 +165,11 @@ class TestThumbnailRequests:
         extractor = FakeThumbnailExtractor([fake_frame])
         session = make_session(thumbnail_extractor=extractor)
         session.load(test_video)
+
+        # Simulate proxy ready + crop
+        proxy_path = tmp_path / "proxy.mov"
+        proxy_path.write_text("fake proxy")
+        session._proxy_video = proxy_path
         session.setCrop(40, 30, 200, 150)
 
         signals = []
@@ -153,7 +179,7 @@ class TestThumbnailRequests:
         qtbot.waitUntil(lambda: len(signals) == 1, timeout=1000)
 
         expected_crop = CropRect(x=40, y=30, width=200, height=150)
-        assert extractor.calls == [(test_video, 3, 40, expected_crop)]
+        assert extractor.calls == [(proxy_path, 3, 40, expected_crop)]
 
     def test_stale_request_discarded_after_edit(self, test_video: Path, tmp_path: Path, qtbot):
         """Thumbnail results are discarded if the edit spec changed mid-extraction."""
@@ -175,6 +201,11 @@ class TestThumbnailRequests:
         extractor = SlowExtractor([fake_frame])
         session = make_session(thumbnail_extractor=extractor)
         session.load(test_video)
+
+        # Simulate proxy ready
+        proxy_path = tmp_path / "proxy.mov"
+        proxy_path.write_text("fake proxy")
+        session._proxy_video = proxy_path
 
         signals = []
         session.thumbnailsReady.connect(lambda urls: signals.append(urls))

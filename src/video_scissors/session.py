@@ -445,15 +445,15 @@ class EditorSession(QObject):
     def requestThumbnails(self, frame_count: int, thumb_height: int) -> None:
         """Request thumbnail extraction in a background thread.
 
-        Uses the proxy video for faster seeking when available.
+        Requires the proxy video — thumbnails are only extracted from
+        the proxy for consistent fast seeking. No-op if proxy isn't ready.
         Stale results are discarded if the editing state changes
         before extraction completes.
         """
-        if self._thumbnail_extractor is None:
+        if self._thumbnail_extractor is None or self._proxy_video is None:
             return
-        # Prefer proxy for fast seeking, fall back to source
-        video_path = self._proxy_video or self.working_video
-        if video_path is None or frame_count <= 0:
+        video_path = self._proxy_video
+        if frame_count <= 0:
             return
 
         crop = self._raw_document.edit_spec.crop
@@ -532,7 +532,6 @@ class EditorSession(QObject):
         self._bump_working_video_revision()
         self._sync_document_model()
         self._emit_all_video_properties()
-        self._invalidate_thumbnails()
         self._start_proxy_generation(path)
 
     def close(self) -> None:
