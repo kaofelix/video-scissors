@@ -24,6 +24,9 @@ ApplicationWindow {
         return session.sourceToEffective(videoArea.position)
     }
 
+    // True when proxy is ready and editing can proceed
+    readonly property bool readyToEdit: videoArea.proxyReady
+
     menuBar: MenuBar {
         Menu {
             title: qsTr("&File")
@@ -35,7 +38,7 @@ ApplicationWindow {
             Action {
                 text: qsTr("&Export…")
                 shortcut: "Ctrl+E"
-                enabled: session.hasVideo && !videoArea.hasCrop
+                enabled: window.readyToEdit && !videoArea.hasCrop
                 onTriggered: exportDialog.open()
             }
         }
@@ -86,7 +89,7 @@ ApplicationWindow {
 
     Shortcut {
         sequence: "Space"
-        enabled: session.hasVideo && !videoArea.hasCrop
+        enabled: window.readyToEdit && !videoArea.hasCrop
         onActivated: {
             if (videoArea.playbackState === MediaPlayer.PlayingState) {
                 videoArea.pause()
@@ -98,31 +101,31 @@ ApplicationWindow {
 
     Shortcut {
         sequence: "Right"
-        enabled: session.hasVideo && !videoArea.hasCrop && !timeline.hasSelectedMarker
+        enabled: window.readyToEdit && !videoArea.hasCrop && !timeline.hasSelectedMarker
         onActivated: stepPlayhead(window.frameStepMs)
     }
 
     Shortcut {
         sequence: "Left"
-        enabled: session.hasVideo && !videoArea.hasCrop && !timeline.hasSelectedMarker
+        enabled: window.readyToEdit && !videoArea.hasCrop && !timeline.hasSelectedMarker
         onActivated: stepPlayhead(-window.frameStepMs)
     }
 
     Shortcut {
         sequence: "Shift+Right"
-        enabled: session.hasVideo && !videoArea.hasCrop && !timeline.hasSelectedMarker
+        enabled: window.readyToEdit && !videoArea.hasCrop && !timeline.hasSelectedMarker
         onActivated: stepPlayhead(1000)
     }
 
     Shortcut {
         sequence: "Shift+Left"
-        enabled: session.hasVideo && !videoArea.hasCrop && !timeline.hasSelectedMarker
+        enabled: window.readyToEdit && !videoArea.hasCrop && !timeline.hasSelectedMarker
         onActivated: stepPlayhead(-1000)
     }
 
     Shortcut {
         sequence: "M"
-        enabled: session.hasVideo && !videoArea.hasCrop
+        enabled: window.readyToEdit && !videoArea.hasCrop
         onActivated: {
             // Add marker at current playhead in source time (seconds)
             var sourceMs = session.effectiveToSource(window.effectivePosition)
@@ -189,8 +192,8 @@ ApplicationWindow {
             videoHeight: session.displayHeight
             contentRevision: session.contentRevision
             markers: session.effectiveMarkers
-            enabled: session.hasVideo && !videoArea.hasCrop
-            focus: session.hasVideo && !videoArea.hasCrop
+            enabled: window.readyToEdit && !videoArea.hasCrop
+            focus: window.readyToEdit && !videoArea.hasCrop
 
             onSeekRequested: function(effectiveMs) {
                 // Convert effective time back to source for the video player
@@ -240,7 +243,7 @@ ApplicationWindow {
             position: window.effectivePosition
             duration: session.effectiveDurationMs
             playbackState: videoArea.playbackState
-            enabled: session.hasVideo
+            enabled: window.readyToEdit
             onPlayRequested: videoArea.play()
             onPauseRequested: videoArea.pause()
             onStepForwardRequested: stepPlayhead(window.frameStepMs)

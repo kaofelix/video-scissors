@@ -14,6 +14,9 @@ Rectangle {
     // Whether a crop from the EditSpec is actively clipping the video
     readonly property bool cropActive: session.document.editSpec.hasCrop
 
+    // Whether the proxy is ready and video can be displayed
+    readonly property bool proxyReady: session.hasVideo && session.proxyVideoUrl !== ""
+
     function play() { videoPlayer.play() }
     function pause() { videoPlayer.pause() }
 
@@ -39,6 +42,7 @@ Rectangle {
         id: clipContainer
         anchors.centerIn: parent
         clip: root.cropActive
+        visible: root.proxyReady
 
         // When crop active: sized to fit crop aspect ratio within parent.
         // When no crop: fill parent entirely (video handles its own aspect).
@@ -82,7 +86,7 @@ Rectangle {
             height: root.cropActive ? root.sourceHeight * clipContainer.cropScale : parent.height
             fillMode: root.cropActive ? VideoOutput.Stretch : VideoOutput.PreserveAspectFit
 
-            source: session.workingVideoUrl
+            source: session.proxyVideoUrl
 
             // Keep the last frame visible when playback ends instead of
             // showing a black screen. Available since Qt 6.9.
@@ -102,12 +106,12 @@ Rectangle {
                 }
             }
 
-            // Reload when working video changes
+            // Load proxy when ready
             Connections {
                 target: session
-                function onWorkingVideoUrlChanged() {
-                    if (session.hasVideo) {
-                        videoPlayer.source = session.workingVideoUrl
+                function onProxyVideoUrlChanged() {
+                    if (session.proxyVideoUrl !== "") {
+                        videoPlayer.source = session.proxyVideoUrl
                         // Play-pause trick to render first frame immediately
                         videoPlayer.play()
                         videoPlayer.pause()
@@ -125,13 +129,42 @@ Rectangle {
         }
     }
 
+    // Loading indicator during proxy generation
+    Column {
+        anchors.centerIn: parent
+        spacing: 16
+        visible: session.isGeneratingProxy
+
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Preparing video..."
+            color: "#888888"
+            font.pixelSize: 18
+        }
+
+        ProgressBar {
+            width: 200
+            from: 0.0
+            to: 1.0
+            value: session.proxyProgressValue
+        }
+
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: Math.round(session.proxyProgressValue * 100) + "%"
+            color: "#666666"
+            font.pixelSize: 14
+        }
+    }
+
     // Crop overlay - works in source coords when no crop, or in crop-relative
     // coords when a crop is active (overlay dimensions match visible region).
+    // Only visible when proxy is ready (no cropping during loading).
     CropOverlay {
         id: cropOverlay
         objectName: "cropOverlay"
         anchors.fill: parent
-        visible: session.hasVideo
+        visible: root.proxyReady
         videoWidth: root.displayRegionW
         videoHeight: root.displayRegionH
         videoRevision: session.workingVideoRevision
@@ -149,13 +182,13 @@ Rectangle {
         }
     }
 
-    // Placeholder when no video
+    // Placeholder when no video (and not loading)
     Text {
         anchors.centerIn: parent
         text: "File → Open or ⌘O"
         color: "#888888"
         font.pixelSize: 18
-        visible: !session.hasVideo
+        visible: !session.hasVideo && !session.isGeneratingProxy
     }
 
     // Crop controls - appear when crop selection exists (during drawing)

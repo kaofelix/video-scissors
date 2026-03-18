@@ -38,6 +38,9 @@ def app_window(qtbot):
     """Create and show the main application window.
 
     Returns the ApplicationWindow with Main.qml loaded and session bridge configured.
+
+    Provides a helper method `openVideoAndWait(path)` that opens a video and
+    waits for the proxy to be ready before returning.
     """
     # Set Qt Quick Controls style for consistent rendering
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Fusion")
@@ -64,6 +67,15 @@ def app_window(qtbot):
     # Keep references alive
     window._engine = engine
     window._session = session
+
+    # Helper to open video and wait for proxy to be ready
+    def open_video_and_wait(path):
+        """Open a video and wait for proxy generation to complete."""
+        with qtbot.waitSignal(session.proxyReady, timeout=30000):
+            session.openFile(str(path))
+        qtbot.wait(100)  # Let QML bindings settle
+
+    window.openVideoAndWait = open_video_and_wait
 
     yield window
 

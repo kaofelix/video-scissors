@@ -43,6 +43,15 @@ class ExportRequest:
     destination: Path
 
 
+@dataclass(frozen=True)
+class ProxyResult:
+    """Result of proxy generation."""
+
+    proxy_path: Path
+    width: int
+    height: int
+
+
 # --- Service Protocols ---
 
 
@@ -87,4 +96,26 @@ class ThumbnailExtractorProtocol(Protocol):
         crop: CropRect | None = None,
     ) -> list[Path]:
         """Extract frames from video, evenly distributed across duration."""
+        ...
+
+
+class ProxyService(Protocol):
+    """Service for generating proxy video files."""
+
+    def generate_proxy(
+        self,
+        source: Path,
+        output_dir: Path,
+        on_progress: Callable[[float], None] | None = None,
+    ) -> ProxyResult:
+        """Generate a proxy video from source.
+
+        Args:
+            source: Path to the source video file
+            output_dir: Directory to write proxy file
+            on_progress: Optional callback receiving progress 0.0 to 1.0
+
+        Returns:
+            ProxyResult with path and dimensions of generated proxy
+        """
         ...

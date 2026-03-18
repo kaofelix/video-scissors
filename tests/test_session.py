@@ -6,7 +6,9 @@ import pytest
 from PySide6.QtCore import QObject
 from PySide6.QtGui import QUndoStack
 
+from conftest import generate_test_video
 from video_scissors.document import EditSpec
+from video_scissors.proxy_service import FFmpegProxyService
 from video_scissors.session import EditorSession, Marker
 
 
@@ -587,3 +589,236 @@ class TestEditSpecIntegration:
         session.add_cut(0.5, 1.0)  # Remove 0.5 seconds
 
         assert session.effective_duration == 1.5
+
+
+class TestProxyState:
+    """Tests for proxy video state tracking."""
+
+    def test_proxy_video_none_initially(self):
+        """proxy_video is None when no video loaded."""
+        session = EditorSession()
+
+        assert session.proxy_video is None
+
+    def test_proxy_video_none_after_load(self, test_video: Path):
+        """proxy_video is None immediately after load (before generation)."""
+        session = EditorSession()
+        session.load(test_video)
+
+        assert session.proxy_video is None
+
+    def test_proxy_video_cleared_on_close(self, test_video: Path):
+        """proxy_video is cleared when session is closed."""
+        session = EditorSession()
+        session.load(test_video)
+        # Simulate proxy being set (would normally happen via signal)
+        session._proxy_video = Path("/tmp/fake_proxy.mov")
+
+        session.close()
+
+        assert session.proxy_video is None
+
+
+class TestProxyQmlProperties:
+    """Tests for proxy-related QML properties."""
+
+    def test_proxy_video_url_empty_initially(self):
+        """proxyVideoUrl is empty string when no proxy."""
+        session = EditorSession()
+
+        assert session.proxyVideoUrl == ""
+
+    def test_proxy_video_url_returns_file_uri(self, test_video: Path):
+        """proxyVideoUrl returns file:// URI when proxy exists."""
+        session = EditorSession()
+        session.load(test_video)
+        proxy_path = Path("/tmp/test_proxy.mov")
+        session._proxy_video = proxy_path
+
+        assert session.proxyVideoUrl == proxy_path.as_uri()
+
+    def test_is_generating_proxy_false_initially(self):
+        """isGeneratingProxy is False when no video loaded."""
+        session = EditorSession()
+
+        assert session.isGeneratingProxy is False
+
+    def test_is_generating_proxy_true_during_generation(self, test_video: Path, qtbot, tmp_path):
+        """isGeneratingProxy is True while proxy is being generated."""
+        proxy_dir = tmp_path / "proxies"
+        proxy_dir.mkdir()
+        session = EditorSession(
+            proxy_service=FFmpegProxyService(),
+            proxy_dir=proxy_dir,
+        )
+
+        with qtbot.waitSignal(session.proxyGenerating, timeout=1000):
+            session.load(test_video)
+
+        assert session.isGeneratingProxy is True
+
+    def test_is_generating_proxy_false_after_completion(self, test_video: Path, qtbot, tmp_path):
+        """isGeneratingProxy is False after proxy generation completes."""
+        proxy_dir = tmp_path / "proxies"
+        proxy_dir.mkdir()
+        session = EditorSession(
+            proxy_service=FFmpegProxyService(),
+            proxy_dir=proxy_dir,
+        )
+
+        with qtbot.waitSignal(session.proxyReady, timeout=10000):
+            session.load(test_video)
+
+        assert session.isGeneratingProxy is False
+
+    def test_is_generating_proxy_false_on_close(self, test_video: Path, tmp_path):
+        """isGeneratingProxy is False after session is closed."""
+        proxy_dir = tmp_path / "proxies"
+        proxy_dir.mkdir()
+        session = EditorSession(
+            proxy_service=FFmpegProxyService(),
+            proxy_dir=proxy_dir,
+        )
+        session.load(test_video)
+        session.close()
+
+        assert session.isGeneratingProxy is False
+
+    def test_proxy_progress_value_zero_initially(self):
+        """proxyProgressValue is 0.0 when no generation in progress."""
+        session = EditorSession()
+
+        assert session.proxyProgressValue == 0.0
+
+    def test_proxy_progress_value_updates_during_generation(
+        self, test_video: Path, qtbot, tmp_path
+    ):
+        """proxyProgressValue updates as proxy generation progresses."""
+        proxy_dir = tmp_path / "proxies"
+        proxy_dir.mkdir()
+        session = EditorSession(
+            proxy_service=FFmpegProxyService(),
+            proxy_dir=proxy_dir,
+        )
+        observed_values: list[float] = []
+
+        def capture_progress(val: float) -> None:
+            observed_values.append(session.proxyProgressValue)
+
+        session.proxyProgress.connect(capture_progress)
+
+        with qtbot.waitSignal(session.proxyReady, timeout=10000):
+            session.load(test_video)
+
+        # Should have captured progress values via the property
+        assert len(observed_values) > 0
+        assert all(0.0 <= v <= 1.0 for v in observed_values)
+
+    def test_proxy_progress_value_one_after_completion(self, test_video: Path, qtbot, tmp_path):
+        """proxyProgressValue is 1.0 after successful completion."""
+        proxy_dir = tmp_path / "proxies"
+        proxy_dir.mkdir()
+        session = EditorSession(
+            proxy_service=FFmpegProxyService(),
+            proxy_dir=proxy_dir,
+        )
+
+        with qtbot.waitSignal(session.proxyReady, timeout=10000):
+            session.load(test_video)
+
+        assert session.proxyProgressValue == 1.0
+
+    def test_proxy_progress_value_reset_on_new_load(self, test_video: Path, qtbot, tmp_path):
+        """proxyProgressValue resets to 0.0 when loading a new video."""
+        proxy_dir = tmp_path / "proxies"
+        proxy_dir.mkdir()
+        session = EditorSession(
+            proxy_service=FFmpegProxyService(),
+            proxy_dir=proxy_dir,
+        )
+
+        # Complete first proxy generation
+        with qtbot.waitSignal(session.proxyReady, timeout=10000):
+            session.load(test_video)
+
+        # Load another video - progress should reset
+        with qtbot.waitSignal(session.proxyGenerating, timeout=1000):
+            session.load(test_video)
+
+        # Progress should be reset (may be 0 or small value at start)
+        assert session.proxyProgressValue < 0.5
+
+
+class TestProxyGeneration:
+    """Tests for background proxy generation on file open."""
+
+    def test_open_file_emits_proxy_generating(self, test_video: Path, qtbot, tmp_path):
+        """Opening a file emits proxyGenerating signal."""
+
+        proxy_dir = tmp_path / "proxies"
+        proxy_dir.mkdir()
+        session = EditorSession(
+            proxy_service=FFmpegProxyService(),
+            proxy_dir=proxy_dir,
+        )
+
+        with qtbot.waitSignal(session.proxyGenerating, timeout=1000):
+            session.load(test_video)
+
+    def test_proxy_ready_emitted_on_completion(self, test_video: Path, qtbot, tmp_path):
+        """proxyReady signal emitted when proxy generation completes."""
+
+        proxy_dir = tmp_path / "proxies"
+        proxy_dir.mkdir()
+        session = EditorSession(
+            proxy_service=FFmpegProxyService(),
+            proxy_dir=proxy_dir,
+        )
+
+        with qtbot.waitSignal(session.proxyReady, timeout=10000):
+            session.load(test_video)
+
+        assert session.proxy_video is not None
+        assert session.proxy_video.exists()
+
+    def test_proxy_progress_signal_emitted(self, test_video: Path, qtbot, tmp_path):
+        """proxyProgress signal emitted during generation."""
+
+        proxy_dir = tmp_path / "proxies"
+        proxy_dir.mkdir()
+        session = EditorSession(
+            proxy_service=FFmpegProxyService(),
+            proxy_dir=proxy_dir,
+        )
+        progress_values: list[float] = []
+        session.proxyProgress.connect(progress_values.append)
+
+        with qtbot.waitSignal(session.proxyReady, timeout=10000):
+            session.load(test_video)
+
+        assert len(progress_values) > 0
+        assert all(0.0 <= p <= 1.0 for p in progress_values)
+
+    def test_proxy_discarded_if_session_changed(self, test_video: Path, qtbot, tmp_path):
+        """If session is closed before proxy finishes, result is discarded."""
+
+        # Create a longer video that takes more time to encode
+        long_video = tmp_path / "long_video.mp4"
+        generate_test_video(long_video, duration=3.0, width=1920, height=1080)
+
+        proxy_dir = tmp_path / "proxies"
+        proxy_dir.mkdir()
+        session = EditorSession(
+            proxy_service=FFmpegProxyService(),
+            proxy_dir=proxy_dir,
+        )
+
+        session.load(long_video)
+        # Close immediately while proxy is still generating
+        session.close()
+
+        # Wait a bit for proxy generation to potentially complete
+        qtbot.wait(500)
+
+        # Proxy should not be set since we closed the session
+        assert session.proxy_video is None

@@ -30,7 +30,7 @@ from video_scissors.document import Document, Marker, effective_duration
 from video_scissors.document import effective_to_source as _effective_to_source
 from video_scissors.document import source_to_effective as _source_to_effective
 from video_scissors.models import DocumentModel
-from video_scissors.services import ExportService, ThumbnailExtractorProtocol
+from video_scissors.services import ExportService, ProxyService, ThumbnailExtractorProtocol
 
 
 @dataclass(frozen=True)
@@ -84,21 +84,39 @@ class EditorSession(QObject):
     # Thumbnail results (event, not a property signal)
     thumbnailsReady = Signal(list)
 
+    # Proxy generation signals
+    proxyGenerating = Signal()
+    proxyProgress = Signal(float)
+    proxyReady = Signal()
+    proxyFailed = Signal(str)
+
+    # Proxy property signals (for QML binding)
+    proxyVideoUrlChanged = Signal()
+    isGeneratingProxyChanged = Signal()
+    proxyProgressValueChanged = Signal()
+
     def __init__(
         self,
         thumbnail_extractor: ThumbnailExtractorProtocol | None = None,
         export_service: ExportService | None = None,
+        proxy_service: ProxyService | None = None,
+        proxy_dir: Path | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._source_video: Path | None = None
         self._current: SessionSnapshot | None = None
+        self._proxy_video: Path | None = None
+        self._is_generating_proxy: bool = False
+        self._proxy_progress_value: float = 0.0
         self._qt_undo_stack = QUndoStack(self)
         self._working_video_revision: int = 0
         self._content_revision: int = 0
         self._suggested_position_ms: float = 0
         self._thumbnail_extractor = thumbnail_extractor
         self._export_service = export_service
+        self._proxy_service = proxy_service
+        self._proxy_dir = proxy_dir
 
         # Stable sub-models for QML binding
         self._document_model = DocumentModel(self)
@@ -139,6 +157,11 @@ class EditorSession(QObject):
         if self._current is None:
             return None
         return self._current.video.path
+
+    @property
+    def proxy_video(self) -> Path | None:
+        """The proxy video path, if generated."""
+        return self._proxy_video
 
     @Property(bool, notify=hasVideoChanged)
     def hasVideo(self) -> bool:
@@ -275,6 +298,23 @@ class EditorSession(QObject):
     def suggestedPositionMs(self) -> float:
         """Suggested playhead position in milliseconds after an operation."""
         return self._suggested_position_ms
+
+    @Property(str, notify=proxyVideoUrlChanged)
+    def proxyVideoUrl(self) -> str:
+        """The proxy video as a file:// URL for QML."""
+        if self._proxy_video is None:
+            return ""
+        return self._proxy_video.as_uri()
+
+    @Property(bool, notify=isGeneratingProxyChanged)
+    def isGeneratingProxy(self) -> bool:
+        """True if proxy generation is in progress."""
+        return self._is_generating_proxy
+
+    @Property(float, notify=proxyProgressValueChanged)
+    def proxyProgressValue(self) -> float:
+        """Progress of proxy generation, 0.0 to 1.0."""
+        return self._proxy_progress_value
 
     # ------------------------------------------------------------------ #
     #  Internal read-only properties                                      #
@@ -436,9 +476,56 @@ class EditorSession(QObject):
     #  Internal Python API (used by commands and tests)                   #
     # ------------------------------------------------------------------ #
 
+    def _start_proxy_generation(self, source_path: Path) -> None:
+        """Start background proxy generation for the source video."""
+        if self._proxy_service is None or self._proxy_dir is None:
+            return
+
+        self._proxy_dir.mkdir(parents=True, exist_ok=True)
+
+        # Set generating state
+        self._is_generating_proxy = True
+        self._proxy_progress_value = 0.0
+        self.isGeneratingProxyChanged.emit()
+        self.proxyProgressValueChanged.emit()
+        self.proxyGenerating.emit()
+
+        proxy_service = self._proxy_service
+        proxy_dir = self._proxy_dir
+
+        def on_progress(p: float) -> None:
+            self._proxy_progress_value = p
+            self.proxyProgressValueChanged.emit()
+            self.proxyProgress.emit(p)
+
+        def generate_and_emit() -> None:
+            try:
+                result = proxy_service.generate_proxy(
+                    source_path,
+                    proxy_dir,
+                    on_progress=on_progress,
+                )
+                # Check if session still has same source video
+                if self._source_video != source_path:
+                    return
+                self._proxy_video = result.proxy_path
+                self._is_generating_proxy = False
+                self.proxyVideoUrlChanged.emit()
+                self.isGeneratingProxyChanged.emit()
+                self.proxyReady.emit()
+            except Exception as e:
+                if self._source_video == source_path:
+                    self._is_generating_proxy = False
+                    self.isGeneratingProxyChanged.emit()
+                    self.proxyFailed.emit(str(e))
+
+        thread = threading.Thread(target=generate_and_emit, daemon=True)
+        thread.start()
+
     def load(self, path: Path) -> None:
         """Load a video file, setting it as both source and working."""
         self._source_video = path
+        self._proxy_video = None
         self._qt_undo_stack.clear()
         video_state = self._build_working_state(path)
         self._current = SessionSnapshot(video=video_state, document=Document())
@@ -446,18 +533,25 @@ class EditorSession(QObject):
         self._sync_document_model()
         self._emit_all_video_properties()
         self._bump_content_revision()
+        self._start_proxy_generation(path)
 
     def close(self) -> None:
         """Close the session, clearing all state."""
         had_video = self._source_video is not None or self._current is not None
         self._source_video = None
         self._current = None
+        self._proxy_video = None
+        self._is_generating_proxy = False
+        self._proxy_progress_value = 0.0
         self._qt_undo_stack.clear()
         self._sync_document_model()
         if had_video:
             self._bump_working_video_revision()
             self._emit_all_video_properties()
             self._bump_content_revision()
+            self.proxyVideoUrlChanged.emit()
+            self.isGeneratingProxyChanged.emit()
+            self.proxyProgressValueChanged.emit()
 
     def add_marker(self, time: float) -> Marker | None:
         """Add a cut marker at the specified time in seconds.
