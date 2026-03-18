@@ -29,7 +29,6 @@ Item {
     property real duration: 0          // Total duration in ms
     property int videoWidth: 0         // Video width for aspect ratio
     property int videoHeight: 0        // Video height for aspect ratio
-    property int contentRevision: 0    // Bumps on file load, close, and edit spec changes
 
     property bool enabled: true
     property var thumbnailUrls: []     // List of thumbnail file:// URLs
@@ -38,7 +37,7 @@ Item {
 
     // Signals
     signal seekRequested(real positionMs)
-    signal thumbnailsRequested(int count, int height, int revision)
+    signal thumbnailsRequested(int count, int height)
 
     // Internal state
     property bool dragging: false
@@ -48,20 +47,22 @@ Item {
 
     implicitHeight: 44
 
-    // Request thumbnails when layout or video content changes
+    // Request thumbnails when layout changes
     onFrameCountChanged: {
-        requestThumbnails()
+        _requestThumbnails()
     }
 
-    onContentRevisionChanged: {
+    // Called by parent when thumbnails should be re-extracted
+    // (file load, edit spec change, proxy ready)
+    function refreshThumbnails() {
         thumbnailUrls = []
-        requestThumbnails()
+        _requestThumbnails()
     }
 
-    // Request thumbnail extraction
-    function requestThumbnails() {
+    // Internal: emit request if layout is valid
+    function _requestThumbnails() {
         if (frameCount > 0 && thumbHeight > 0) {
-            thumbnailsRequested(frameCount, thumbHeight, contentRevision)
+            thumbnailsRequested(frameCount, thumbHeight)
         }
     }
 

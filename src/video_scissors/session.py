@@ -72,7 +72,7 @@ class EditorSession(QObject):
     displayWidthChanged = Signal()
     displayHeightChanged = Signal()
     effectiveDurationMsChanged = Signal()
-    contentRevisionChanged = Signal()
+    thumbnailsInvalidated = Signal()
     suggestedPositionMsChanged = Signal()
 
     # Derived data signals
@@ -111,7 +111,7 @@ class EditorSession(QObject):
         self._proxy_progress_value: float = 0.0
         self._qt_undo_stack = QUndoStack(self)
         self._working_video_revision: int = 0
-        self._content_revision: int = 0
+        self._thumbnail_request_id: int = 0
         self._suggested_position_ms: float = 0
         self._thumbnail_extractor = thumbnail_extractor
         self._export_service = export_service
@@ -128,9 +128,9 @@ class EditorSession(QObject):
         # Derived property dependencies:
         # display dimensions depend on crop + video
         self._document_model._edit_spec_model.cropChanged.connect(self._emit_display_dimensions)
-        # content revision tracks all thumbnail-invalidating changes
-        self._document_model._edit_spec_model.cutsChanged.connect(self._bump_content_revision)
-        self._document_model._edit_spec_model.cropChanged.connect(self._bump_content_revision)
+        # thumbnail invalidation on edit spec changes
+        self._document_model._edit_spec_model.cutsChanged.connect(self._invalidate_thumbnails)
+        self._document_model._edit_spec_model.cropChanged.connect(self._invalidate_thumbnails)
         # effective duration depends on cuts
         self._document_model._edit_spec_model.cutsChanged.connect(self.effectiveDurationMsChanged)
         # effective markers depend on both markers and cuts
@@ -285,14 +285,6 @@ class EditorSession(QObject):
         return [
             {"id": m.id, "time": _source_to_effective(m.time, doc.edit_spec)} for m in doc.markers
         ]
-
-    @Property(int, notify=contentRevisionChanged)
-    def contentRevision(self) -> int:
-        """Revision counter for thumbnail invalidation.
-
-        Increments on file open, close, and edit spec changes.
-        """
-        return self._content_revision
 
     @Property(float, notify=suggestedPositionMsChanged)
     def suggestedPositionMs(self) -> float:
@@ -449,26 +441,28 @@ class EditorSession(QObject):
         edit_spec = self._current.document.edit_spec
         self._export_service.export(source, edit_spec, Path(output_path))
 
-    @Slot(int, int, int)
-    def requestThumbnails(self, frame_count: int, thumb_height: int, revision: int) -> None:
+    @Slot(int, int)
+    def requestThumbnails(self, frame_count: int, thumb_height: int) -> None:
         """Request thumbnail extraction in a background thread.
 
         Uses the proxy video for faster seeking when available.
+        Stale results are discarded if the editing state changes
+        before extraction completes.
         """
         if self._thumbnail_extractor is None:
             return
         # Prefer proxy for fast seeking, fall back to source
         video_path = self._proxy_video or self.working_video
-        if video_path is None or frame_count <= 0 or revision != self._content_revision:
+        if video_path is None or frame_count <= 0:
             return
 
         crop = self._raw_document.edit_spec.crop
         extractor = self._thumbnail_extractor
-        content_revision = self._content_revision
+        request_id = self._thumbnail_request_id
 
         def extract_and_emit() -> None:
             frames = extractor.extract(video_path, frame_count, thumb_height, crop=crop)
-            if revision != content_revision:
+            if request_id != self._thumbnail_request_id:
                 return
             urls = [path.as_uri() for path in frames]
             self.thumbnailsReady.emit(urls)
@@ -517,7 +511,7 @@ class EditorSession(QObject):
                 self.proxyVideoUrlChanged.emit()
                 self.isGeneratingProxyChanged.emit()
                 # Bump content revision to trigger thumbnail refresh with proxy
-                self._bump_content_revision()
+                self._invalidate_thumbnails()
                 self.proxyReady.emit()
             except Exception as e:
                 if self._source_video == source_path:
@@ -538,7 +532,7 @@ class EditorSession(QObject):
         self._bump_working_video_revision()
         self._sync_document_model()
         self._emit_all_video_properties()
-        self._bump_content_revision()
+        self._invalidate_thumbnails()
         self._start_proxy_generation(path)
 
     def close(self) -> None:
@@ -554,7 +548,7 @@ class EditorSession(QObject):
         if had_video:
             self._bump_working_video_revision()
             self._emit_all_video_properties()
-            self._bump_content_revision()
+            self._invalidate_thumbnails()
             self.proxyVideoUrlChanged.emit()
             self.isGeneratingProxyChanged.emit()
             self.proxyProgressValueChanged.emit()
@@ -643,10 +637,10 @@ class EditorSession(QObject):
         self.displayWidthChanged.emit()
         self.displayHeightChanged.emit()
 
-    def _bump_content_revision(self) -> None:
-        """Increment content revision and emit signal."""
-        self._content_revision += 1
-        self.contentRevisionChanged.emit()
+    def _invalidate_thumbnails(self) -> None:
+        """Bump thumbnail request ID and notify QML to re-request."""
+        self._thumbnail_request_id += 1
+        self.thumbnailsInvalidated.emit()
 
     def _bump_working_video_revision(self) -> None:
         """Advance the working-video revision after a state change."""

@@ -4,6 +4,7 @@ These tests verify the session's properties, slots, and signal behavior
 as seen from QML. The session is now the direct QML interface (no bridge).
 """
 
+import threading
 from pathlib import Path
 
 from video_scissors.document import CropRect
@@ -103,39 +104,8 @@ class TestSessionUndoRedo:
         assert session.canRedo is False
 
 
-class TestContentRevision:
-    """Tests for content revision tracking (thumbnails staleness)."""
-
-    def test_content_revision_starts_at_zero(self):
-        """Content revision starts at 0 before any video is loaded."""
-        session = make_session()
-        assert session.contentRevision == 0
-
-    def test_content_revision_increments_on_file_open(self, test_video: Path):
-        """Opening a file increments the content revision."""
-        session = make_session()
-        session.openFile(str(test_video))
-        assert session.contentRevision > 0
-
-    def test_content_revision_increments_on_edit_spec_change(self, test_video: Path):
-        """Edit spec changes (crop, cut) increment the content revision."""
-        session = make_session()
-        session.load(test_video)
-        rev_after_load = session.contentRevision
-
-        session.setCrop(10, 20, 100, 80)
-
-        assert session.contentRevision > rev_after_load
-
-    def test_content_revision_increments_on_close(self, test_video: Path):
-        """Closing the session increments the content revision."""
-        session = make_session()
-        session.load(test_video)
-        rev_after_load = session.contentRevision
-
-        session.close()
-
-        assert session.contentRevision > rev_after_load
+class TestThumbnailRequests:
+    """Tests for thumbnail extraction requests and staleness handling."""
 
     def test_display_dimensions_update_on_file_open(self, test_video: Path):
         """displayWidth/displayHeight reflect video dimensions after file open."""
@@ -149,9 +119,7 @@ class TestContentRevision:
         assert session.displayWidth == 320
         assert session.displayHeight == 240
 
-    def test_request_thumbnails_ignores_stale_revision(
-        self, test_video: Path, tmp_path: Path, qtbot
-    ):
+    def test_request_thumbnails_extracts_and_emits(self, test_video: Path, tmp_path: Path, qtbot):
         fake_frame = tmp_path / "frame.jpg"
         fake_frame.write_text("not a real image")
         extractor = FakeThumbnailExtractor([fake_frame])
@@ -161,26 +129,7 @@ class TestContentRevision:
         signals = []
         session.thumbnailsReady.connect(lambda urls: signals.append(urls))
 
-        stale_revision = session.contentRevision - 1
-        session.requestThumbnails(3, 40, stale_revision)
-        qtbot.wait(50)
-
-        assert signals == []
-        assert extractor.calls == []
-
-    def test_request_thumbnails_emits_for_current_revision(
-        self, test_video: Path, tmp_path: Path, qtbot
-    ):
-        fake_frame = tmp_path / "frame.jpg"
-        fake_frame.write_text("not a real image")
-        extractor = FakeThumbnailExtractor([fake_frame])
-        session = make_session(thumbnail_extractor=extractor)
-        session.load(test_video)
-
-        signals = []
-        session.thumbnailsReady.connect(lambda urls: signals.append(urls))
-
-        session.requestThumbnails(3, 40, session.contentRevision)
+        session.requestThumbnails(3, 40)
         qtbot.waitUntil(lambda: len(signals) == 1, timeout=1000)
 
         assert signals == [[f"file://{fake_frame}"]]
@@ -200,11 +149,48 @@ class TestContentRevision:
         signals = []
         session.thumbnailsReady.connect(lambda urls: signals.append(urls))
 
-        session.requestThumbnails(3, 40, session.contentRevision)
+        session.requestThumbnails(3, 40)
         qtbot.waitUntil(lambda: len(signals) == 1, timeout=1000)
 
         expected_crop = CropRect(x=40, y=30, width=200, height=150)
         assert extractor.calls == [(test_video, 3, 40, expected_crop)]
+
+    def test_stale_request_discarded_after_edit(self, test_video: Path, tmp_path: Path, qtbot):
+        """Thumbnail results are discarded if the edit spec changed mid-extraction."""
+        fake_frame = tmp_path / "frame.jpg"
+        fake_frame.write_text("not a real image")
+
+        barrier = threading.Event()
+
+        class SlowExtractor:
+            """Extractor that blocks until released, simulating slow extraction."""
+
+            def __init__(self, frames: list[Path]):
+                self.frames = frames
+
+            def extract(self, video_path, frame_count, thumb_height, crop=None):
+                barrier.wait(timeout=5)
+                return self.frames
+
+        extractor = SlowExtractor([fake_frame])
+        session = make_session(thumbnail_extractor=extractor)
+        session.load(test_video)
+
+        signals = []
+        session.thumbnailsReady.connect(lambda urls: signals.append(urls))
+
+        # Start a thumbnail request
+        session.requestThumbnails(3, 40)
+
+        # Change the edit spec while extraction is in progress
+        session.setCrop(10, 20, 100, 80)
+
+        # Release the extractor
+        barrier.set()
+        qtbot.wait(100)
+
+        # The result should be discarded — edit spec changed since the request
+        assert signals == []
 
 
 class TestSessionMarkers:

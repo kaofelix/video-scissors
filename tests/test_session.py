@@ -775,7 +775,7 @@ class TestThumbnailsUseProxy:
             session.load(test_video)
 
         # Request thumbnails
-        session.requestThumbnails(10, 60, session.contentRevision)
+        session.requestThumbnails(10, 60)
         qtbot.wait(100)  # Let thread start
 
         # Verify extractor was called with proxy path, not source

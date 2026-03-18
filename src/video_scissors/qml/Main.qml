@@ -17,10 +17,10 @@ ApplicationWindow {
     // Main.qml converts at the boundary.
 
     // Effective position: recomputed when source position or cuts change.
-    // Reading contentRevision forces rebind when edit spec changes, since
-    // sourceToEffective is a Slot call that QML can't track dependencies for.
+    // effectiveDurationMs is read here to force rebind when cuts change,
+    // since sourceToEffective is a Slot call whose dependencies QML can't track.
     readonly property real effectivePosition: {
-        session.contentRevision  // rebind when cuts change
+        session.effectiveDurationMs  // rebind when cuts change
         return session.sourceToEffective(videoArea.position)
     }
 
@@ -190,7 +190,6 @@ ApplicationWindow {
             duration: session.effectiveDurationMs
             videoWidth: session.displayWidth
             videoHeight: session.displayHeight
-            contentRevision: session.contentRevision
             markers: session.effectiveMarkers
             enabled: window.readyToEdit && !videoArea.hasCrop
             focus: window.readyToEdit && !videoArea.hasCrop
@@ -200,8 +199,8 @@ ApplicationWindow {
                 videoArea.position = session.effectiveToSource(effectiveMs)
             }
 
-            onThumbnailsRequested: function(count, height, revision) {
-                session.requestThumbnails(count, height, revision)
+            onThumbnailsRequested: function(count, height) {
+                session.requestThumbnails(count, height)
             }
 
             onMarkerAdded: function(effectiveTimeSeconds) {
@@ -231,6 +230,9 @@ ApplicationWindow {
                 target: session
                 function onThumbnailsReady(urls) {
                     timeline.thumbnailUrls = urls
+                }
+                function onThumbnailsInvalidated() {
+                    timeline.refreshThumbnails()
                 }
             }
         }

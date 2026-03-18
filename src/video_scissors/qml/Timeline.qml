@@ -24,7 +24,6 @@ Item {
     // Video properties (for thumbnails)
     property int videoWidth: 0
     property int videoHeight: 0
-    property int contentRevision: 0
     property real videoFrameRate: 30.0  // Default to 30fps
 
     // Marker properties
@@ -43,9 +42,14 @@ Item {
     // Expose thumbnail URLs for external connection
     property alias thumbnailUrls: scrubber.thumbnailUrls
 
+    // Called by parent when thumbnails should be re-extracted
+    function refreshThumbnails() {
+        scrubber.refreshThumbnails()
+    }
+
     // Signals - forwarded from child components
     signal seekRequested(real positionMs)
-    signal thumbnailsRequested(int count, int height, int revision)
+    signal thumbnailsRequested(int count, int height)
     signal markerAdded(real timeSeconds)
     signal markerRemoved(string markerId)
     signal markerMoved(string markerId, real newTime)
@@ -103,7 +107,6 @@ Item {
             duration: root.duration
             videoWidth: root.videoWidth
             videoHeight: root.videoHeight
-            contentRevision: root.contentRevision
             enabled: root.enabled
             topRadius: 0  // Square where it meets CutBar
             bottomRadius: root.cornerRadius
@@ -111,8 +114,8 @@ Item {
             onSeekRequested: function(positionMs) {
                 root.seekRequested(positionMs)
             }
-            onThumbnailsRequested: function(count, height, revision) {
-                root.thumbnailsRequested(count, height, revision)
+            onThumbnailsRequested: function(count, height) {
+                root.thumbnailsRequested(count, height)
             }
         }
     }
