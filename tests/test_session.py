@@ -1,6 +1,7 @@
 """Tests for the editor session model."""
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from PySide6.QtCore import QObject
@@ -747,6 +748,41 @@ class TestProxyQmlProperties:
 
         # Progress should be reset (may be 0 or small value at start)
         assert session.proxyProgressValue < 0.5
+
+
+class TestThumbnailsUseProxy:
+    """Tests for thumbnail extraction using proxy video."""
+
+    def test_thumbnails_use_proxy_when_available(self, test_video: Path, qtbot, tmp_path):
+        """Thumbnail extraction uses proxy video for faster seeking."""
+        proxy_dir = tmp_path / "proxies"
+        proxy_dir.mkdir()
+        thumb_dir = tmp_path / "thumbnails"
+        thumb_dir.mkdir()
+
+        # Create a mock thumbnail extractor to capture which path is used
+        mock_extractor = MagicMock()
+        mock_extractor.extract.return_value = []
+
+        session = EditorSession(
+            thumbnail_extractor=mock_extractor,
+            proxy_service=FFmpegProxyService(),
+            proxy_dir=proxy_dir,
+        )
+
+        # Wait for proxy to be ready
+        with qtbot.waitSignal(session.proxyReady, timeout=10000):
+            session.load(test_video)
+
+        # Request thumbnails
+        session.requestThumbnails(10, 60, session.contentRevision)
+        qtbot.wait(100)  # Let thread start
+
+        # Verify extractor was called with proxy path, not source
+        mock_extractor.extract.assert_called_once()
+        called_path = mock_extractor.extract.call_args[0][0]
+        assert called_path == session.proxy_video
+        assert called_path != session.source_video
 
 
 class TestProxyGeneration:

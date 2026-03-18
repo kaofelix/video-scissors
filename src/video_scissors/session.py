@@ -451,10 +451,14 @@ class EditorSession(QObject):
 
     @Slot(int, int, int)
     def requestThumbnails(self, frame_count: int, thumb_height: int, revision: int) -> None:
-        """Request thumbnail extraction in a background thread."""
+        """Request thumbnail extraction in a background thread.
+
+        Uses the proxy video for faster seeking when available.
+        """
         if self._thumbnail_extractor is None:
             return
-        video_path = self.working_video
+        # Prefer proxy for fast seeking, fall back to source
+        video_path = self._proxy_video or self.working_video
         if video_path is None or frame_count <= 0 or revision != self._content_revision:
             return
 
@@ -512,6 +516,8 @@ class EditorSession(QObject):
                 self._is_generating_proxy = False
                 self.proxyVideoUrlChanged.emit()
                 self.isGeneratingProxyChanged.emit()
+                # Bump content revision to trigger thumbnail refresh with proxy
+                self._bump_content_revision()
                 self.proxyReady.emit()
             except Exception as e:
                 if self._source_video == source_path:
