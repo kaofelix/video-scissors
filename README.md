@@ -1,6 +1,6 @@
 # ✂️ Video Scissors
 
-A fast, focused video editor for quick edits. Crop, cut, and export — no bloat.
+A fast, focused video editor for quick edits. Crop, cut, and export.
 
 ![Video Scissors](docs/screenshot.webp)
 
