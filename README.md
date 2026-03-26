@@ -35,6 +35,13 @@ make test-gui # tests with visible window
 make lint     # ruff lint + format
 ```
 
+## Tech Stack
+
+- **Python** + **Qt Quick/QML** via PySide6
+- **FFmpeg** for media processing (via PyAV)
+- **uv** for dependency management
+- **ruff** for linting and formatting, **ty** for type checking
+
 ## License
 
 MIT
